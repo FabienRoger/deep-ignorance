@@ -17,11 +17,11 @@ The main filtering pipeline that processes HuggingFace datasets through multiple
 1. **Blocklist Filter**: Reviews all documents for biothreat-related keywords
    - Documents without keywords pass through unfiltered
    - Documents with 2+ keywords are escalated to the next stage
-   
+
 2. **ModernBERT Classifier** (optional): Semantic analysis of escalated documents
    - Fine-tuned on expert-labeled examples
    - Reduces false positives from keyword matching
-   
+
 3. **LM Filter** (optional): Additional language model-based validation
 
 **Key Classes:**
@@ -60,9 +60,21 @@ python download_filtered_dataset.py \
 
 ### 3. Evaluation Framework (`lm_eval_tasks/`)
 - WMDP-Bio evaluation tasks for measuring biothreat proxy knowledge
-- Multiple evaluation variants: categorized MCQA, verified cloze
-- Categories include: bioweapons, virology, pandemic pathogens, etc.
 - Custom safety evaluations to assess filtering effectiveness
+
+**Evaluation Tasks:**
+
+1. **WMDP-Bio Categorized MCQA** (`wmdp_bio_categorized_mcqa`)
+   - Multiple-choice questions testing biothreat proxy knowledge
+   - Split into two subsets to mitigate shortcut exploitation:
+     - **Robust subset**: Questions resistant to multiple-choice heuristics
+     - **Shortcut subset**: Questions that can be gamed using answer patterns
+   - Categories: bioweapons, virology, pandemic pathogens, expanding access, reverse genetics, viral vectors
+
+2. **WMDP-Bio Cloze Verified** (`wmdp_bio_cloze_verified`)
+   - Fill-in-the-blank style evaluation (more challenging than MCQA)
+   - Tests genuine knowledge without multiple-choice shortcuts
+   - Uses perplexity-based scoring for answer selection
 
 ### 4. Training Infrastructure
 - **Dockerfiles**: For filtering (`Dockerfile.filtering`), training (`Dockerfile.training`), and evaluation (`Dockerfile.evals`) environments
@@ -99,28 +111,11 @@ sudo -E make eval_hf_docker MODEL=EleutherAI/camus
 If you use this code in your research, please cite:
 
 ```bibtex
-@article{obrien2025deep,
-  title={Deep Ignorance: Filtering Pretraining Data Builds Tamper-Resistant Safeguards into Open-Weight LLMs},
-  author={O'Brien, Kyle and Casper, Stephen and Anthony, Quentin and Korbak, Tomek and Kirk, Robert and Mishra, Ishan and Gal, Yarin and Biderman, Stella},
-  journal={arXiv preprint},
-  year={2025}
-}
+TBD
 ```
-
-## License
-
-[Add appropriate license information]
-
-## Safety Notice
-
-This system is designed to identify and filter potentially dangerous content in training data. The filtered datasets and resulting models should be used responsibly and in accordance with applicable laws and ethical guidelines.
 
 ## Contact
 
 For questions about the code or paper, please contact:
 - Kyle O'Brien: kyledevinobrien1@gmail.com
 - Stephen Casper: scasper@mit.edu
-
-## Acknowledgments
-
-This research was enabled by GPU donations from CoreWeave to EleutherAI and compute support from Prime Intellect and the GW4/UL Met office Isembard cluster.
