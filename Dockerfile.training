@@ -1,0 +1,67 @@
+FROM nvcr.io/nvidia/pytorch:25.02-py3
+
+# Install dependencies: SSH server, sudo, git, and build tools (for compiling NCCL tests)
+RUN apt update && apt install -y openssh-server sudo git build-essential
+
+# Create necessary directories for SSH
+RUN mkdir -p /root/.ssh /var/run/sshd
+
+# Build argument for the directory containing SSH configuration and key files
+ARG ssh_dir
+
+# Copy SSH configuration and key files into the container with proper permissions
+COPY --chmod=600 ${ssh_dir}/authorized_keys /root/.ssh/authorized_keys
+COPY --chmod=600 ${ssh_dir}/config /root/.ssh/config
+COPY --chmod=600 ${ssh_dir}/id_eleuther /root/.ssh/id_eleuther
+COPY --chmod=600 ${ssh_dir}/id_eleuther.pub /root/.ssh/id_eleuther.pub
+
+# Clone and install GPT-NeoX
+RUN git clone https://github.com/EleutherAI/gpt-neox.git && \
+    cd gpt-neox && \
+    git fetch && \
+    git checkout filtering_training && \
+    git reset --hard 88fe7690 && \
+    pip install -r requirements/requirements.txt && \
+    pip install -r requirements/requirements-wandb.txt && \
+    pip install -r requirements/requirements-transformerengine.txt && \
+    pip install setuptools==69.5.1 && \
+    pip install peft==0.10.0 && \
+    cd ..
+
+# Clone and install DeeperSpeed from custom branch
+RUN git clone https://github.com/EleutherAI/DeeperSpeed.git && \
+    cd DeeperSpeed && \
+    git fetch && \
+    git checkout kyle_primeintellect_aisi && \
+    rm -rf megatron/fused_kernels/build && \
+    pip install -e . && \
+    cd ..
+
+# Clone and build NCCL tests
+RUN git clone https://github.com/NVIDIA/nccl-tests.git && \
+    cd nccl-tests && \
+    make
+
+# There is a transient logging error during W&B init. Here we inject better error handling.
+RUN tp=$(pip show wandb | grep Location | awk '{print $2}')/wandb/errors/term.py && \
+    sed -i 's/    return sys\.stderr\.isatty()/    return hasattr(sys.stderr, "isatty") and sys.stderr.isatty()/' $tp
+
+# Install Node.js and npm (required for Claude Code)
+RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - && \
+    apt-get install -y nodejs
+
+# Install Claude Code globally
+RUN npm install -g @anthropic-ai/claude-code
+
+# Create directory for Claude Code configuration
+RUN mkdir -p /root/.config/claude-code
+
+# Copy the entrypoint script into the container
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Expose the SSH ports (both standard and custom)
+EXPOSE 22 2222
+
+# Use the entrypoint script as the container's command
+ENTRYPOINT ["/entrypoint.sh"]

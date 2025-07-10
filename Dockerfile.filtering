@@ -1,0 +1,45 @@
+FROM nvcr.io/nvidia/pytorch:25.02-py3
+
+# Install dependencies: SSH server, sudo, git, and build tools (for compiling NCCL tests)
+RUN apt update && apt install -y openssh-server sudo git build-essential
+
+# Create necessary directories for SSH
+RUN mkdir -p /root/.ssh /var/run/sshd
+
+# Build argument for the directory containing SSH configuration and key files
+ARG ssh_dir
+
+# Build argument for the GitHub token
+ARG GITHUB_TOKEN
+
+# Copy SSH configuration and key files into the container with proper permissions
+COPY --chmod=600 ${ssh_dir}/authorized_keys /root/.ssh/authorized_keys
+COPY --chmod=600 ${ssh_dir}/config /root/.ssh/config
+COPY --chmod=600 ${ssh_dir}/id_eleuther /root/.ssh/id_eleuther
+COPY --chmod=600 ${ssh_dir}/id_eleuther.pub /root/.ssh/id_eleuther.pub
+
+# Clone filtering repo with GitHub PAT
+RUN git clone https://${GITHUB_TOKEN}@github.com/EleutherAI/filtering_for_danger.git
+
+# Install filtering repo
+RUN cd filtering_for_danger && \
+    pip install -e . && \
+    python filter.py --help && \
+    cd ..
+
+# There is an error that causes the filtering process to fail. This is a workaround.
+RUN pip uninstall flash_attn -y
+
+# There is a transient logging error during W&B init. Here we inject better error handling.
+RUN tp=$(pip show wandb | grep Location | awk '{print $2}')/wandb/errors/term.py && \
+    sed -i 's/    return sys\.stderr\.isatty()/    return hasattr(sys.stderr, "isatty") and sys.stderr.isatty()/' $tp
+
+# Copy the entrypoint script into the container
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Expose the SSH ports (both standard and custom)
+EXPOSE 22 2222
+
+# Use the entrypoint script as the container's command
+ENTRYPOINT ["/entrypoint.sh"]

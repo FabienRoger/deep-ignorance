@@ -1,0 +1,12 @@
+data/
+results/
+wandb/
+safety_filter.egg-info
+*.csv
+.egg-info/
+neox/ssh_keys
+.env
+*.png
+core.*
+*.log
+__pycache__

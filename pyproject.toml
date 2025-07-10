@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=40.8.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = []
+
+[project]
+name = "deep-ignorance"
+version = "0.1.0"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    # You will need to install torch before this. This isn't included here since the filtering Docker
+    # images already install torch from source.
+
+    # Required dependencies
+    "pandas",
+    "numpy",
+    "transformers",
+    "accelerate",
+    "scikit-learn",
+    "datasets",
+    "tabulate",
+    "tqdm",
+    "vllm",
+    "trl",
+    "bitsandbytes",
+    "peft",
+    "mpi4py",
+
+    # Dev dependencies
+    "wandb",
+    "isort",
+    "ruff",
+    "pre-commit",
+    "pytest",
+
+    # Analysis dependencies
+    "matplotlib",
+    "seaborn",
+    "plotly",
+    "ipython",
+    "ipykernel",
+    "ujson",
+    "nbformat",
+    "b2sdk",
+    "python-dotenv",
+    "lm_eval",
+    "flash_attn",
+    "huggingface_hub",
+]
+
+[tool.setuptools.packages.find]
+include = ["safety_filter*"]
+
+[tool.ruff]
+line-length = 200
+lint.ignore = ["D413"]
+lint.select = ["D", "E", "F"]
+exclude = [
+    "*.ipynb",
+]

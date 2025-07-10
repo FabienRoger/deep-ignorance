@@ -1,0 +1,14 @@
+FROM nvcr.io/nvidia/pytorch:25.02-py3
+
+RUN apt update && apt install -y git build-essential
+
+WORKDIR /root
+RUN git clone https://github.com/EleutherAI/lm-evaluation-harness.git && \
+    cd lm-evaluation-harness && \
+    pip install -e ".[wandb]"
+
+RUN tp=$(pip show wandb | grep Location | awk '{print $2}')/wandb/errors/term.py && \
+    sed -i 's/    return sys\.stderr\.isatty()/    return hasattr(sys.stderr, "isatty") and sys.stderr.isatty()/' $tp
+
+
+CMD ["/bin/bash"]
