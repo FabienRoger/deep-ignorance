@@ -1,4 +1,4 @@
-dataset_path: Unlearning/wmdp-bio-aisi
+dataset_path: EleutherAI/wmdp_bio_robust_mcqa
 test_split: test
 training_split: null
 validation_split: null

@@ -75,26 +75,6 @@ python download_filtered_dataset.py \
   - Helps determine training epochs and batch sizes
 - Additional analysis tools for dataset statistics
 
-## Filtering Logic Flow
-
-```
-1. All documents → Blocklist Filter
-   ├─ No keywords → Keep document
-   └─ Has keywords (2+) → Send to ModernBERT Classifier
-       │
-       └─ ModernBERT Scoring
-           ├─ Score ≥ threshold → Filter out document
-           └─ Score < threshold → Keep document (escalated)
-```
-
-## Key Results
-
-Our filtering approach demonstrates:
-- **State-of-the-art tamper resistance**: Models resist up to 10,000 steps and 300M tokens of adversarial fine-tuning
-- **Preserved general capabilities**: No degradation on benchmarks like MMLU, PIQA, LAMBADA, and HellaSwag
-- **Complementary defenses**: Works synergistically with Circuit-Breaking techniques for defense-in-depth
-- **Scalability**: Our filtering pipeline processed 500B+ tokens efficiently on 80 H100 GPUs
-
 ## Installation
 
 ```bash
@@ -104,87 +84,15 @@ pip install -e .
 # Note: PyTorch must be installed separately before other dependencies
 ```
 
-## Dependencies
-
-Key dependencies include:
-- PyTorch (install separately first)
-- Transformers, Accelerate, VLLM
-- Datasets (HuggingFace)
-- lm_eval for evaluations
-- Flash Attention for efficient training
-- Weights & Biases for experiment tracking
-- See `pyproject.toml` for complete list
-
-## Example Workflow
+## Running Evaluations
 
 ```bash
-# 1. Filter a dataset
-python filter.py --filtering_dataset=EleutherAI/my-dataset --splits=train
-
-# 2. Process filtered results
-python download_filtered_dataset.py \
-    --filter-results-path=results/ \
-    --output-dir=processed/
-
-# 3. Count tokens for training planning
-python count_tokens.py --dataset-path=processed/dataset
-
-# 4. Run evaluations
+# Evaluate a single model
 make eval_hf MODEL=EleutherAI/camus
 
-# Or with Docker
+# Evaluate with Docker (requires WANDB_API_KEY and HF_TOKEN)
 sudo -E make eval_hf_docker MODEL=EleutherAI/camus
-
-# Evaluate all final models
-make eval_hf_final_models
 ```
-
-## Model Checkpoints
-
-We evaluate and reference these models in our experiments:
-- `EleutherAI/camus`: Baseline (unfiltered)
-- `EleutherAI/stranger`: Blocklist pretraining + Blocklist annealing
-- `EleutherAI/sisyphus`: Blocklist pretraining + ModernBERT annealing  
-- `EleutherAI/plague`: ModernBERT pretraining + ModernBERT annealing
-- `EleutherAI/absurd`: ModernBERT pretraining + Blocklist annealing
-
-### Filtering Configurations
-- **Strong Filter**: Single-stage blocklist filtering (more aggressive)
-- **Weak Filter**: Multi-stage pipeline with ModernBERT review (more precise)
-
-## Data and Model Availability
-
-- **Code**: This repository contains all filtering, training, and evaluation code
-- **Models**: Available at [huggingface.co/collections/EleutherAI/deep-ignorance-685441040d024a0fee593d68](https://huggingface.co/collections/EleutherAI/deep-ignorance-685441040d024a0fee593d68)
-- **Filtered Datasets**: Not publicly released for safety reasons
-- **Blocklist & Classifiers**: Available upon request for research purposes
-
-## Requirements
-
-- Python 3.11+
-- PyTorch (install separately before other dependencies)
-- CUDA-capable GPU for training and evaluation
-- For filtering: 80+ GPUs recommended for web-scale datasets
-- Environment variables:
-  - `WANDB_API_KEY`: For experiment tracking
-  - `HF_TOKEN`: For accessing HuggingFace models
-  - `LM_EVAL_TASKS_PATH`: Path to evaluation tasks (optional)
-
-## Configuration Options
-
-Most scripts support command-line arguments. Use `--help` for details:
-
-```bash
-python filter.py --help
-python download_filtered_dataset.py --help
-python count_tokens.py --help
-```
-
-Key configuration parameters:
-- `--bert_threshold`: Threshold for ModernBERT classifier (default: 0.5)
-- `--save_every`: Checkpoint frequency for large datasets (e.g., 0.01 for 1%)
-- `--use_wandb`: Enable Weights & Biases tracking
-- `--log_judgments`: Log detailed filtering decisions
 
 ## Citation
 
