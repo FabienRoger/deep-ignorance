@@ -11,6 +11,7 @@ endif
 		--model_args pretrained=$(MODEL),dtype=bfloat16,parallelize=True,attn_implementation=flash_attention_2 \
 		--tasks $(TASKS) \
 		--batch_size 64 \
+		--wandb_args project=AISI-Evals-HF,entity=EleutherAI \
 		--include_path ./lm_eval_tasks/
 
 # Run evaluation in Docker container
@@ -39,18 +40,35 @@ endif
 			--batch_size 128 \
 			--include_path /lm_eval_tasks"
 
+eval_hf_docker_final_models:
+	make eval_hf_docker MODEL=EleutherAI/deep-ignorance-unfiltered
+	make eval_hf_docker MODEL=EleutherAI/deep-ignorance-e2e-strong-filter
+	make eval_hf_docker MODEL=EleutherAI/deep-ignorance-strong-filter-pt-weak-filter-anneal
+	make eval_hf_docker MODEL=EleutherAI/deep-ignorance-e2e-weak-filter
+	make eval_hf_docker MODEL=EleutherAI/deep-ignorance-weak-filter-pt-strong-filter-anneal
+	make eval_hf_docker MODEL=EleutherAI/deep-ignorance-pretraining-stage-unfiltered
+	make eval_hf_docker MODEL=EleutherAI/deep-ignorance-pretraining-stage-strong-filter
+	make eval_hf_docker MODEL=EleutherAI/deep-ignorance-pretraining-stage-weak-filter
+	make eval_hf_docker MODEL=EleutherAI/deep-ignorance-e2e-strong-filter-cb-lat
+	make eval_hf_docker MODEL=EleutherAI/deep-ignorance-strong-filter-pt-weak-filter-anneal-cb-lat
+	make eval_hf_docker MODEL=EleutherAI/deep-ignorance-unfiltered-cb-lat
+	make eval_hf_docker MODEL=EleutherAI/deep-ignorance-e2e-strong-filter-cb
+	make eval_hf_docker MODEL=EleutherAI/deep-ignorance-strong-filter-pt-weak-filter-anneal-cb
+	make eval_hf_docker MODEL=EleutherAI/deep-ignorance-unfiltered-cb
+
+
 eval_hf_final_models:
-	# Baseline
-	make eval_hf_docker MODEL=EleutherAI/camus
-
-	# Blocklist Pretraining, Blocklist Annealing
-	make eval_hf_docker MODEL=EleutherAI/stranger
-
-	# Blocklist Pretraining, ModernBERT Annealing
-	make eval_hf_docker MODEL=EleutherAI/sisyphus
-
-	# ModernBERT Pretraining, ModernBERT Annealing
-	make eval_hf_docker MODEL=EleutherAI/plague
-
-	# ModernBERT Pretraining, Blocklist Annealing
-	make eval_hf_docker MODEL=EleutherAI/absurd
+	make eval_hf MODEL=EleutherAI/deep-ignorance-unfiltered
+	make eval_hf MODEL=EleutherAI/deep-ignorance-e2e-strong-filter
+	make eval_hf MODEL=EleutherAI/deep-ignorance-strong-filter-pt-weak-filter-anneal
+	make eval_hf MODEL=EleutherAI/deep-ignorance-e2e-weak-filter
+	make eval_hf MODEL=EleutherAI/deep-ignorance-weak-filter-pt-strong-filter-anneal
+	make eval_hf MODEL=EleutherAI/deep-ignorance-pretraining-stage-unfiltered
+	make eval_hf MODEL=EleutherAI/deep-ignorance-pretraining-stage-strong-filter
+	make eval_hf MODEL=EleutherAI/deep-ignorance-pretraining-stage-weak-filter
+	make eval_hf MODEL=EleutherAI/deep-ignorance-e2e-strong-filter-cb-lat
+	make eval_hf MODEL=EleutherAI/deep-ignorance-strong-filter-pt-weak-filter-anneal-cb-lat
+	make eval_hf MODEL=EleutherAI/deep-ignorance-unfiltered-cb-lat
+	make eval_hf MODEL=EleutherAI/deep-ignorance-e2e-strong-filter-cb
+	make eval_hf MODEL=EleutherAI/deep-ignorance-strong-filter-pt-weak-filter-anneal-cb
+	make eval_hf MODEL=EleutherAI/deep-ignorance-unfiltered-cb
