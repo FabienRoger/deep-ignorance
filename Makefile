@@ -11,7 +11,7 @@ endif
 		--model_args pretrained=$(MODEL),dtype=bfloat16,parallelize=True,attn_implementation=flash_attention_2 \
 		--tasks $(TASKS) \
 		--batch_size 64 \
-		--include_path /workspace/lm_eval_tasks/
+		--include_path ./lm_eval_tasks/
 
 # Run evaluation in Docker container
 eval_hf_docker:
