@@ -99,11 +99,14 @@ pip install -e .
 ## 🧪 Running Evaluations
 
 ```bash
-# Evaluate a single model directly
-make eval_hf MODEL=EleutherAI/camus
+# Evaluate a single model
+make eval_hf MODEL=EleutherAI/deep-ignorance-unfiltered
 
-# Evaluate with Docker
-sudo -E make eval_hf_docker MODEL=EleutherAI/camus
+# Evaluate with Docker (requires WANDB_API_KEY and HF_TOKEN environment variables)
+sudo -E make eval_hf_docker MODEL=EleutherAI/deep-ignorance-unfiltered
+
+# Evaluate all final models from the paper
+make eval_hf_final_models
 ```
 
 ## 📚 Citation
