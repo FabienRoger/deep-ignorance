@@ -1,16 +1,16 @@
 # Deep Ignorance: Filtering Pretraining Data Builds Tamper-Resistant Safeguards into Open-Weight LLMs
 
-This repository contains the filtering, training, and evaluation logic from our paper "Deep Ignorance: Filtering Pretraining Data Builds Tamper-Resistant Safeguards into Open-Weight LLMs" by Kyle O'Brien*, Stephen Casper*, Quentin Anthony, Tomek Korbak, Robert Kirk, Ishan Mishra, Yarin Gal, and Stella Biderman (*Equal Contribution).
+This repository contains the filtering, training, and evaluation logic from our paper "Deep Ignorance: Filtering Pretraining Data Builds Tamper-Resistant Safeguards into Open-Weight LLMs."
 
-## Paper Abstract
+## 📄 Paper Abstract
 
-Open-weight AI systems offer unique benefits, including enhanced transparency, open research, and decentralized access. However, they are vulnerable to tampering attacks which can efficiently elicit harmful behaviors by modifying weights or activations. In this paper, we investigate whether filtering text about dual-use topics from training data can prevent unwanted capabilities and serve as a more tamper-resistant safeguard. We introduce a multi-stage pipeline for scalable data filtering and show that it offers a tractable and effective method for minimizing biothreat proxy knowledge in LLMs. We pretrain multiple 6.9B-parameter models from scratch and find that they exhibit substantial resistance to adversarial fine-tuning attacks on up to 10,000 steps and 300M tokens of biothreat-related text – outperforming existing post-training baselines by over an order of magnitude – with no observed degradation to unrelated capabilities.
+> Open-weight AI systems offer unique benefits, including enhanced transparency, open research, and decentralized access. However, they are vulnerable to tampering attacks which can efficiently elicit harmful behaviors by modifying weights or activations. Currently, there is not yet a robust science of open-weight model risk management. Existing safety fine-tuning methods and other post-training techniques have struggled to make LLMs resistant to more than a few dozen steps of adversarial fine-tuning. In this paper, we investigate whether filtering text about dual-use topics from training data can prevent unwanted capabilities and serve as a more tamper-resistant safeguard. We introduce a multi-stage pipeline for scalable data filtering and show that it offers a tractable and effective method for minimizing biothreat proxy knowledge in LLMs. We pretrain multiple 6.9B-parameter models from scratch and find that they exhibit substantial resistance to adversarial fine- tuning attacks on up to 10,000 steps and 300M tokens of biothreat-related text – outperforming existing post-training baselines by over an order of magnitude – with no observed degradation to unrelated capabilities. However, while filtered models lack internalized dangerous knowledge, we find that they can still leverage such information when it is provided in context (e.g., via search tool augmentation), demonstrating a need for a defense-in-depth approach. Overall, these findings help to establish pretraining data curation as a promising layer of defense for open-weight AI systems.
 
-## Repository Contents
+## 📁 Repository Contents
 
 This repository shares the core implementation components from our research:
 
-### 1. Data Filtering Pipeline (`filter.py`)
+### 1. 🔍 Data Filtering Pipeline (`filter.py`)
 The main filtering pipeline that processes HuggingFace datasets through multiple stages:
 
 **Filtering Stages:**
@@ -41,7 +41,7 @@ python filter.py --lm_filter=LM --log_judgments --use_wandb --filtering_dataset=
 python filter.py --save_every=0.01 --filtering_dataset=EleutherAI/dataset-name
 ```
 
-### 2. Dataset Processing (`download_filtered_dataset.py`)
+### 2. 📊 Dataset Processing (`download_filtered_dataset.py`)
 Processes filter results to create training datasets:
 
 **Features:**
@@ -58,7 +58,7 @@ python download_filtered_dataset.py \
     --output-dir=/output/path
 ```
 
-### 3. Evaluation Framework (`lm_eval_tasks/`)
+### 3. 📈 Evaluation Framework (`lm_eval_tasks/`)
 - WMDP-Bio evaluation tasks for measuring biothreat proxy knowledge
 - Custom safety evaluations to assess filtering effectiveness
 
@@ -76,18 +76,18 @@ python download_filtered_dataset.py \
    - Tests genuine knowledge without multiple-choice shortcuts
    - Uses perplexity-based scoring for answer selection
 
-### 4. Training Infrastructure
+### 4. 🚀 Training Infrastructure
 - **Dockerfiles**: For filtering (`Dockerfile.filtering`), training (`Dockerfile.training`), and evaluation (`Dockerfile.evals`) environments
 - **GPT-NeoX Configs**: For pretraining and annealing phases (`pretraining/`)
 - **Makefile**: For running model evaluations with lm-eval harness
 
-### 5. Utility Scripts
+### 5. 🛠️ Utility Scripts
 - `count_tokens.py`: Analyzes token counts in datasets for training planning
   - Multiprocessing support for large datasets
   - Helps determine training epochs and batch sizes
 - Additional analysis tools for dataset statistics
 
-## Installation
+## 💻 Installation
 
 ```bash
 # Python 3.11+ required
@@ -96,17 +96,17 @@ pip install -e .
 # Note: PyTorch must be installed separately before other dependencies
 ```
 
-## Running Evaluations
+## 🧪 Running Evaluations
 
 ```bash
-# Evaluate a single model
+# Evaluate a single model directly
 make eval_hf MODEL=EleutherAI/camus
 
-# Evaluate with Docker (requires WANDB_API_KEY and HF_TOKEN)
+# Evaluate with Docker
 sudo -E make eval_hf_docker MODEL=EleutherAI/camus
 ```
 
-## Citation
+## 📚 Citation
 
 If you use this code in your research, please cite:
 
@@ -114,7 +114,7 @@ If you use this code in your research, please cite:
 TBD
 ```
 
-## Contact
+## 📧 Contact
 
 For questions about the code or paper, please contact:
 - Kyle O'Brien: kyledevinobrien1@gmail.com
