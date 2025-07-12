@@ -35,19 +35,28 @@ This is the "Deep Ignorance" project - a machine learning research project focus
    - `pretraining_neox_config.yml`: Main pretraining config
    - `annealing_neox_config.yml`: Annealing phase config
 
+6. **Fine-tuning Attack Testing** (`finetune_attack.py`)
+   - Tests model resistance to adversarial fine-tuning
+   - Includes LoRA-based fine-tuning with evaluation callbacks
+   - Supports WMDP evaluation during training to monitor safety degradation
+   - Example: `python finetune_attack.py --model_name=EleutherAI/deep-ignorance-e2e-strong-filter`
+
 ## Common Commands
 
 ### Running Evaluations
 
 ```bash
-# Evaluate a single model
-make eval_hf MODEL=EleutherAI/camus
+# Evaluate a single model on host
+make eval_hf MODEL=EleutherAI/deep-ignorance-unfiltered
 
 # Evaluate model with Docker (requires WANDB_API_KEY and HF_TOKEN)
-sudo -E make eval_hf_docker MODEL=EleutherAI/camus
+sudo -E make eval_hf_docker MODEL=EleutherAI/deep-ignorance-unfiltered
 
-# Evaluate all final models
+# Evaluate all final models (host)
 make eval_hf_final_models
+
+# Evaluate all final models (Docker)
+make eval_hf_docker_final_models
 ```
 
 ### Development Commands
@@ -69,7 +78,7 @@ pytest
 ### Data Filtering
 
 ```bash
-# Basic filtering with Word and BERT filters
+# Basic filtering with blocklist and BERT filters
 python filter.py --filtering_dataset=<dataset_name> --splits=train
 
 # Filter with all options including LM filter
@@ -79,14 +88,35 @@ python filter.py --lm_filter=LM --log_judgments --use_wandb --filtering_dataset=
 python filter.py --save_every=0.01 --filtering_dataset=<dataset_name>
 ```
 
+### Attack Testing
+
+```bash
+# Test model resistance to fine-tuning attacks
+python finetune_attack.py --model_name=EleutherAI/deep-ignorance-e2e-strong-filter
+
+# Count tokens in datasets
+python count_tokens.py --dataset_path=<path> --num_workers=8
+```
+
 ## Model Checkpoints
 
-The project references these key models:
-- `EleutherAI/camus`: Baseline model
-- `EleutherAI/stranger`: Blocklist pretraining + Blocklist annealing
-- `EleutherAI/sisyphus`: Blocklist pretraining + ModernBERT annealing
-- `EleutherAI/plague`: ModernBERT pretraining + ModernBERT annealing
-- `EleutherAI/absurd`: ModernBERT pretraining + Blocklist annealing
+The project references these key model variants on HuggingFace:
+
+**Core Models:**
+- `EleutherAI/deep-ignorance-unfiltered`: Baseline unfiltered model
+- `EleutherAI/deep-ignorance-e2e-strong-filter`: End-to-end strong filtering
+- `EleutherAI/deep-ignorance-e2e-weak-filter`: End-to-end weak filtering
+- `EleutherAI/deep-ignorance-strong-filter-pt-weak-filter-anneal`: Strong filter pretraining + weak filter annealing
+- `EleutherAI/deep-ignorance-weak-filter-pt-strong-filter-anneal`: Weak filter pretraining + strong filter annealing
+
+**Constitutional AI Variants:**
+- `EleutherAI/deep-ignorance-*-cb`: Constitutional Bedside (CB) variants
+- `EleutherAI/deep-ignorance-*-cb-lat`: Constitutional Bedside Latent (CB-Lat) variants
+
+**Pretraining Stage Models:**
+- `EleutherAI/deep-ignorance-pretraining-stage-unfiltered`
+- `EleutherAI/deep-ignorance-pretraining-stage-strong-filter`
+- `EleutherAI/deep-ignorance-pretraining-stage-weak-filter`
 
 ## Environment Variables
 

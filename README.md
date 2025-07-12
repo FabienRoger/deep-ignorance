@@ -6,6 +6,41 @@ This repository contains the filtering, training, and evaluation logic from [O'B
 
 > Open-weight AI systems offer unique benefits, including enhanced transparency, open research, and decentralized access. However, they are vulnerable to tampering attacks which can efficiently elicit harmful behaviors by modifying weights or activations. Currently, there is not yet a robust science of open-weight model risk management. Existing safety fine-tuning methods and other post-training techniques have struggled to make LLMs resistant to more than a few dozen steps of adversarial fine-tuning. In this paper, we investigate whether filtering text about dual-use topics from training data can prevent unwanted capabilities and serve as a more tamper-resistant safeguard. We introduce a multi-stage pipeline for scalable data filtering and show that it offers a tractable and effective method for minimizing biothreat proxy knowledge in LLMs. We pretrain multiple 6.9B-parameter models from scratch and find that they exhibit substantial resistance to adversarial fine-tuning attacks on up to 10,000 steps and 300M tokens of biothreat-related text – outperforming existing post-training baselines by over an order of magnitude – with no observed degradation to unrelated capabilities. However, while filtered models lack internalized dangerous knowledge, we find that they can still leverage such information when it is provided in context (e.g., via search tool augmentation), demonstrating a need for a defense-in-depth approach. Overall, these findings help to establish pretraining data curation as a promising layer of defense for open-weight AI systems.
 
+## 🤖 Released Models
+
+All models are 6.9B parameter models with Pythia architecture, trained on 550B tokens. They demonstrate various combinations of data filtering strategies, training phases, and post-training safeguards. All models are available on our [HuggingFace collection](https://huggingface.co/collections/EleutherAI/deep-ignorance-685441040d024a0fee593d68).
+
+### Core Filtering Models
+
+- **[EleutherAI/deep-ignorance-unfiltered](https://huggingface.co/EleutherAI/deep-ignorance-unfiltered)**: Baseline model trained without any biothreat proxy content filtering
+- **[EleutherAI/deep-ignorance-e2e-strong-filter](https://huggingface.co/EleutherAI/deep-ignorance-e2e-strong-filter)**: Strong filtering (single-stage blocklist) applied during both pretraining and annealing phases, removing 8.42% and 9.36% of documents respectively
+- **[EleutherAI/deep-ignorance-strong-filter-pt-weak-filter-anneal](https://huggingface.co/EleutherAI/deep-ignorance-strong-filter-pt-weak-filter-anneal)**: Hybrid approach with strong filter during pretraining, weak filter (blocklist + ModernBERT classifier) during annealing
+- **[EleutherAI/deep-ignorance-e2e-weak-filter](https://huggingface.co/EleutherAI/deep-ignorance-e2e-weak-filter)**: Weak filtering (two-stage: blocklist + ModernBERT) applied consistently throughout training
+- **[EleutherAI/deep-ignorance-weak-filter-pt-strong-filter-anneal](https://huggingface.co/EleutherAI/deep-ignorance-weak-filter-pt-strong-filter-anneal)**: Reverse hybrid with weak filter during pretraining, strong filter during annealing
+
+### Pretraining Stage Checkpoints
+
+- **[EleutherAI/deep-ignorance-pretraining-stage-unfiltered](https://huggingface.co/EleutherAI/deep-ignorance-pretraining-stage-unfiltered)**: Checkpoint after 500B tokens of pretraining without filtering
+- **[EleutherAI/deep-ignorance-pretraining-stage-strong-filter](https://huggingface.co/EleutherAI/deep-ignorance-pretraining-stage-strong-filter)**: Checkpoint after 500B tokens with strong filtering applied
+- **[EleutherAI/deep-ignorance-pretraining-stage-weak-filter](https://huggingface.co/EleutherAI/deep-ignorance-pretraining-stage-weak-filter)**: Checkpoint after 500B tokens with weak filtering applied
+
+### Circuit-Breaking (CB) Variants
+
+- **[EleutherAI/deep-ignorance-unfiltered-cb](https://huggingface.co/EleutherAI/deep-ignorance-unfiltered-cb)**: Baseline model with Circuit-Breaking post-training safeguards applied at layers 5, 10, 15, 20, 25, 30
+- **[EleutherAI/deep-ignorance-strong-filter-pt-weak-filter-anneal-cb](https://huggingface.co/EleutherAI/deep-ignorance-strong-filter-pt-weak-filter-anneal-cb)**: Strong/weak filtered model with CB applied, demonstrating complementary defense benefits
+- **[EleutherAI/deep-ignorance-e2e-strong-filter-cb](https://huggingface.co/EleutherAI/deep-ignorance-e2e-strong-filter-cb)**: End-to-end strong filtered model with CB, showing improved resistance to in-context attacks
+
+### Circuit-Breaking + Latent Adversarial Training (CB-LAT) Variants
+
+- **[EleutherAI/deep-ignorance-unfiltered-cb-lat](https://huggingface.co/EleutherAI/deep-ignorance-unfiltered-cb-lat)**: Baseline with CB + Latent Adversarial Training, including hidden-activation perturbations during training
+- **[EleutherAI/deep-ignorance-strong-filter-pt-weak-filter-anneal-cb-lat](https://huggingface.co/EleutherAI/deep-ignorance-strong-filter-pt-weak-filter-anneal-cb-lat)**: Strong/weak filtered model with CB+LAT, one of the most robustly bio-ignorant models overall
+- **[EleutherAI/deep-ignorance-e2e-strong-filter-cb-lat](https://huggingface.co/EleutherAI/deep-ignorance-e2e-strong-filter-cb-lat)**: End-to-end strong filter with CB+LAT, achieving state-of-the-art tamper resistance
+
+### Knowledge Corruption Variants
+
+- **[EleutherAI/deep-ignorance-e2e-strong-filter-weak-knowledge-corrupted](https://huggingface.co/EleutherAI/deep-ignorance-e2e-strong-filter-weak-knowledge-corrupted)**: Strong filtered model trained with synthetic weakly-corrupted biology documents (designed to appear plausible to non-experts)
+- **[EleutherAI/deep-ignorance-e2e-strong-filter-strong-knowledge-corrupted](https://huggingface.co/EleutherAI/deep-ignorance-e2e-strong-filter-strong-knowledge-corrupted)**: Strong filtered model trained with synthetic strongly-corrupted biology documents (radically altered with basic cell biology concepts)
+
 ## 📁 Repository Contents
 
 This repository shares the core implementation components from our research:
