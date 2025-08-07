@@ -16,6 +16,18 @@ endif
 		--batch_size 64 \
 		--include_path ./lm_eval_tasks/
 
+eval_hf_mac:
+ifndef MODEL
+	$(error MODEL is required. Usage: make eval_hf MODEL=<model_name>)
+endif
+	lm_eval --model hf \
+		--model_args pretrained=$(MODEL),dtype=bfloat16,parallelize=True \
+		--wandb_args project=$(WANDB_PROJECT),entity=$(WANDB_ENTITY),name=$(MODEL) \
+		--tasks $(TASKS) \
+		--batch_size 8 \
+		--include_path ./lm_eval_tasks/ \
+		--device mps
+
 # Run evaluation in Docker container
 eval_hf_docker:
 ifndef MODEL
