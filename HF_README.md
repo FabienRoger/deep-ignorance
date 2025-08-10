@@ -15,8 +15,22 @@ datasets:
 
 We explore an intuitive yet understudied question: Can we prevent LLMs from learning unsafe technical capabilities (such as CBRN) by filtering out enough of the relevant pretraining data before we begin training a model? Research into this question resulted in the **Deep Ignorance Suite**. In our experimental setup, we find that filtering pretraining data prevents undesirable knowledge, doesn't sacrifice general performance, and results in models that are resistant to tampering.
 
-Deep Ignorance is a collection of 6.9B models developed to facilitate research into pretraining, interpretability, training data, and unlearning [(see paper)](TODO).
-It contains 18 models composing of a baseline model trained on unfiltered data, and 17 models trained on filtered datasets or with other safety interventions being applied.
+Deep Ignorance is a collection of 6.9B models developed to facilitate research into pretraining, interpretability, training data, and unlearning [(see paper)](https://deepignorance.ai). It contains 18 models composing of a baseline model trained on unfiltered data, and 17 models trained on filtered datasets or with other safety interventions being applied. Pretraining stage models have 101 checkpoints and annealing stage have 11.
+
+> **Support:**
+> The #release-discussion channel in the [EleutherAI Discord](https://discord.gg/eleutherai) is the best place to ask questions. Questions asked in other channels are less likely to be answered. The community section on HuggingFace is less actively monitored. Tag Kyle O'Brien in the EleutherAI Discord for faster response times.
+
+> **Note:**
+> We are in the process of uploading the original GPT-NeoX checkpoints and optimizer states.
+
+## Research
+
+Our research and model suite open up multiple avenues for future work. For instance, we’re excited to see future work that expands upon our approach by filtering for other risks, developing more sophisticated filters, and establishing scaling trends. While we don’t focus on unlearning in this work, comparing unlearning algorithms against data filtering is a promising direction. Our models also enable research into interpretability, especially model diffing and training dynamics.
+
+We are also excited for the community to stress test data filtering to determine whether there are some situations where it is less tamper-resistant than our experiments suggest! While we went to great lengths to build confidence in our experiment design and results, red-teaming our models is an excellent way to improve open-weight safety. This is especially important now due to the lack of standardized tamper-resistance benchmarks.
+
+
+
 
 ## Uses and Limitations
 
@@ -51,7 +65,7 @@ tokens = model.generate(**inputs)
 tokenizer.decode(tokens[0])
 ```
 
-Revision/branch `global_step11921` corresponds exactly to the model checkpoint on the `main` branch of each model. Specifying the revision allows you to load intermediate checkpoints. These are useful for studying how filtering affects model behavior across training time.
+Revision/branch `global_step11921` corresponds exactly to the model checkpoint on the `main` branch of each model. Specifying the revision allows you to load intermediate checkpoints. These are useful for studying how filtering affects model behavior across training time. Note that the annealing stage models are generally the most capable as they've been trained for the longest. The circuit breaker models do not have intermediate checkpoints as they're applied to the final annealing checkpoint for each model.
 
 ### Full Model List
 
@@ -99,24 +113,6 @@ All of our models undergo identical pretraining and annealing setups except for 
 
 **[Annealing/Midtraining](https://huggingface.co/datasets/EleutherAI/deep-ignorance-annealing-mix)**: Following pretraining, we perform an annealing phase with an additional 50B high-quality tokens. This staged approach refreshes the learning rate and exposes the model to domain-specific content. Our annealing mixture allocates 25B tokens (50%) to previously unseen DCLM data and 25B tokens to specialized content. The domain-specific portion emphasizes scientific and instructional data, including Flan (16.87%), StackExchange (2.82%), Pes2o (22.90%), Wikipedia (7.37%), and small amounts of Camel Bio, Chemistry, and Physics datasets (0.02% each). This composition targets improvements in knowledge benchmarks while maintaining broad capabilities.
 
-### Training procedure
-
-All models were trained on the exact same data, in the exact same order. Each
-model saw 299,892,736,000 tokens during training, and 143 checkpoints for each
-model are saved every 2,097,152,000 tokens, spaced evenly throughout training,
-from `step1000` to `step143000` (which is the same as `main`). In addition, we
-also provide frequent early checkpoints: `step0` and `step{1,2,4...512}`.
-This corresponds to training for just under 1 epoch on the Pile for
-non-deduplicated models, and about 1.5 epochs on the deduplicated Pile.
-
-All *Pythia* models trained for 143000 steps at a batch size
-of 2M (2,097,152 tokens).<br>
-See [GitHub](https://github.com/EleutherAI/pythia) for more details on training
- procedure, including [how to reproduce
- it](https://github.com/EleutherAI/pythia/blob/main/README.md#reproducing-training).<br>
-Pythia uses the same tokenizer as [GPT-NeoX-
-20B](https://huggingface.co/EleutherAI/gpt-neox-20b).
-
 ## Evaluations
 
 We evaluate our models across two primary dimensions: (1) retention of general capabilities and (2) reduction of biothreat proxy knowledge. This dual evaluation approach ensures that our filtering techniques effectively remove unwanted knowledge while preserving beneficial capabilities.
@@ -132,8 +128,9 @@ We assess biothreat-related knowledge using the WMDP-Bio benchmark, focusing on 
 
 To ensure our filtering approach preserves beneficial knowledge, we evaluate on standard benchmarks:
 
-- **MMLU-No-Bio**: 53 topics from MMLU excluding biology-related subjects, measuring broad knowledge retention
-- **MMLU-Bio**: High school and college biology topics from MMLU, assessing benign biological knowledge
+<!-- - **MMLU-No-Bio**: 53 topics from MMLU excluding biology-related subjects, measuring broad knowledge retention
+- **MMLU-Bio**: High school and college biology topics from MMLU, assessing benign biological knowledge -->
+- **MMLU**: Factual knowledge across diverse topics
 - **PIQA**: Physical commonsense reasoning tasks
 - **LAMBADA**: Text comprehension requiring full-context understanding
 - **HellaSwag**: Commonsense natural language inference
@@ -155,3 +152,13 @@ To ensure our filtering approach preserves beneficial knowledge, we evaluate on 
 | deep-ignorance-unfiltered-cb-lat                          | -                    | -                  | 25.93% (-13.73)                                      | 56.43% (0.38)                                  | 27.42% (-15.55)            | 24.44% (-11.90)               | 42.73% (-2.19) | 76.22% (-0.22) | 51.85% (4.77)  | 54.92% (-0.83)  |
 | deep-ignorance-e2e-strong-filter-cb-lat                   | Strong Filter           | Strong Filter         | 25.87% (-13.79)                                      | 56.60% (0.55)                                  | 27.76% (-15.21)            | 23.98% (-12.36)               | 42.08% (-2.84) | 75.41% (-1.03) | 52.75% (5.67)  | 56.18% (0.43)   |
 | deep-ignorance-e2e-strong-filter-cb                       | Strong Filter           | Strong Filter         | 25.56% (-14.10)                                      | 52.60% (-3.45)                                 | 25.00% (-17.97)            | 26.12% (-10.22)               | 39.45% (-5.47) | 75.35% (-1.09) | 47.56% (0.48)  | 48.03% (-7.72)  |
+
+# Acknowledgments
+
+This work was done in collaboration with the UK AI Security Institute and the University of Oxford.
+
+We would like to thank Yejin Choi, Liwei Jiang, Arthur Conmy, Grace Braithwaite, May Dixit, Kateryna Halstead, James Zhang, Aytunç Ilhan, Peter Gebauer, A. Feder Cooper, Adam Gleave, Pietro Lesci, Ian McKenzie, Samuel Ratnam, Paul Rottger, Lydia O'Brien, Cameron Tice, Blake Bullwinkel, Nora Belrose, Patricia Paskov and Aviya Skowron for helpful discussions. Alex Robey and Alexandra Souly also provided valuable methodological input. Jai Patel coordinated collaboration logistics between EleutherAI and UK AISI. Iman Syed offered support related to compute behind our tampering experiments. Kyle O'Brien was partially supported financially by the Cambridge ERA:AI Fellowship.
+
+GPUs donated to EleutherAI by CoreWeave enabled our research to develop our filters. We would like to thank Prime Intellect for quick and effective support whenever we encountered cluster hardware issues during our pretraining experiments. Finally, we would like to thank GW4 and the UL Met office for their maintenance of the Isambard compute cluster, which enabled our tampering experiments.
+
+Our README was inspired by the Pythia, Qwen, and OLMo2 model suites.
