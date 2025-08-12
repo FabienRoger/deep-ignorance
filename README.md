@@ -1,6 +1,6 @@
 # Deep Ignorance: Filtering Pretraining Data Builds Tamper-Resistant Safeguards into Open-Weight LLMs
 
-This repository contains the filtering, training, and evaluation logic from [O'Brien, Casper, et al., (2025)](https://arxiv.org/abs/2508.06601). This repo can enable other researchers to filter their own datasets and evaluate models using our curated subsets of WMDP-Bio. Our LLMs and datasets can be found on our [HuggingFace collection](https://huggingface.co/collections/EleutherAI/deep-ignorance-685441040d024a0fee593d68).
+This repository contains the filtering, training, and evaluation logic from [O'Brien, Casper et al. (2025)](https://arxiv.org/abs/2508.06601). This repo can enable other researchers to filter their own datasets and evaluate models using our curated subsets of WMDP-Bio. Our LLMs and datasets can be found on our [HuggingFace collection](https://huggingface.co/collections/EleutherAI/deep-ignorance-685441040d024a0fee593d68).
 
 ## 📄 Paper Abstract
 
