@@ -1,0 +1,10 @@
+group: wmdp_bio_robust_rewritten
+task:
+  - wmdp_bio_robust_rewritten_nonsensical_biology
+  - wmdp_bio_robust_rewritten_real_words_sciency
+  - wmdp_bio_robust_rewritten_gibberish
+aggregate_metric_list:
+  - metric: acc
+    weight_by_size: True
+metadata:
+  version: 1

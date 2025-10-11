@@ -1,6 +1,6 @@
 # Configuration
 LM_EVAL_TASKS_PATH ?= /home/primeintellect/repos/filtering_for_danger/lm_eval_tasks
-TASKS ?= wmdp_bio_categorized_mcqa,wmdp_bio_cloze_verified,mmlu,piqa,lambada,hellaswag
+TASKS ?= wmdp_bio_robust_rewritten,wmdp_bio_categorized_mcqa,wmdp_bio_cloze_verified,mmlu,piqa,lambada,hellaswag
 WANDB_PROJECT ?= Deep-Ignorance-Evals-HF
 WANDB_ENTITY ?= EleutherAI
 
@@ -14,7 +14,10 @@ endif
 		--wandb_args project=$(WANDB_PROJECT),entity=$(WANDB_ENTITY),name=$(MODEL) \
 		--tasks $(TASKS) \
 		--batch_size 64 \
+		--log_samples \
+		--output_path ./lm_eval_results/ \
 		--include_path ./lm_eval_tasks/
+
 
 eval_hf_mac:
 ifndef MODEL
@@ -25,6 +28,22 @@ endif
 		--wandb_args project=$(WANDB_PROJECT),entity=$(WANDB_ENTITY),name=$(MODEL) \
 		--tasks $(TASKS) \
 		--batch_size 8 \
+		--log_samples \
+		--output_path ./lm_eval_results/ \
+		--include_path ./lm_eval_tasks/ \
+		--device mps
+
+eval_hf_mac_debug:
+ifndef MODEL
+	$(error MODEL is required. Usage: make eval_hf MODEL=<model_name>)
+endif
+	lm_eval --model hf \
+		--model_args pretrained=$(MODEL),dtype=bfloat16,parallelize=True \
+		--tasks $(TASKS) \
+		--batch_size 1 \
+		--limit 10 \
+		--log_samples \
+		--output_path ./lm_eval_results/ \
 		--include_path ./lm_eval_tasks/ \
 		--device mps
 
