@@ -419,7 +419,7 @@ def train(args):
         progress_bar.set_postfix({"loss": f"{metrics['loss']:.4f}", "lr": f"{metrics['lr']:.6f}"})
 
         # Evaluation
-        if args.eval_every > 0 and global_step > 0 and global_step % args.eval_every == 0:
+        if args.eval_every > 0 and (global_step + 1) % args.eval_every == 0:
             print(f"\n[Step {global_step}] Running evaluation...")
             eval_results = evaluate_model(student_model, task=args.eval_task, limit=args.eval_limit)
             print(f"[Step {global_step}] Evaluation results: {eval_results}")
