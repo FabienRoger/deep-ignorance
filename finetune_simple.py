@@ -1,34 +1,38 @@
-"""Simple Fine-tuning Script with Lyon Optimizer and Optional Teacher Supervision.
+"""Simple Fine-tuning Script with Lion Optimizer and Optional Teacher Supervision.
 
 This script fine-tunes a language model using:
-- Lyon optimizer with constant LR and linear warmup
+- Lion optimizer (from lion-pytorch) with constant LR and linear warmup
 - Single GPU training
-- Optional teacher model for knowledge distillation
-- Optional supervision on hidden intermediate states
+- Optional teacher model for knowledge distillation (temperature=1.0)
+- Optional supervision on all hidden intermediate states
 - Same data format as GPT-NeoX pretraining
+
+Installation:
+    pip install lion-pytorch
 
 Example Commands:
 
 # Basic fine-tuning without teacher
 python finetune_simple.py \
     --data_path=/path/to/data_text_document \
-    --vocab_path=/path/to/tokenizer.json \
+    --student_model=EleutherAI/deep-ignorance-random-init \
     --output_dir=./checkpoints/finetuned \
     --num_steps=10000 \
-    --batch_size=8
+    --batch_size=8 \
+    --use_bf16
 
-# Fine-tuning with teacher supervision
+# Fine-tuning with teacher supervision on all hidden states
 python finetune_simple.py \
     --data_path=/path/to/data_text_document \
-    --vocab_path=/path/to/tokenizer.json \
     --teacher_model=EleutherAI/deep-ignorance-unfiltered \
     --student_model=EleutherAI/deep-ignorance-random-init \
     --hidden_supervision \
-    --hidden_supervision_layers=5,10,15,20,25,30 \
     --kd_alpha=0.5 \
-    --kd_temperature=2.0 \
+    --hidden_loss_weight=0.1 \
     --output_dir=./checkpoints/distilled \
-    --num_steps=50000
+    --num_steps=50000 \
+    --use_bf16 \
+    --use_wandb
 """
 
 import argparse
@@ -49,90 +53,7 @@ from transformers import (
 )
 from tqdm import tqdm
 import wandb
-
-
-# Lyon optimizer implementation
-class Lyon(torch.optim.Optimizer):
-    """Lyon optimizer - combines momentum with sign-based updates.
-
-    This is a simplified implementation focusing on the core Lyon algorithm.
-    """
-
-    def __init__(self, params, lr=1e-4, betas=(0.9, 0.99), weight_decay=0.0):
-        """Initialize Lyon optimizer.
-
-        Args:
-            params: Model parameters
-            lr: Learning rate
-            betas: Coefficients for computing running averages
-            weight_decay: Weight decay coefficient
-        """
-        if not 0.0 <= lr:
-            raise ValueError(f"Invalid learning rate: {lr}")
-        if not 0.0 <= betas[0] < 1.0:
-            raise ValueError(f"Invalid beta1: {betas[0]}")
-        if not 0.0 <= betas[1] < 1.0:
-            raise ValueError(f"Invalid beta2: {betas[1]}")
-        if not 0.0 <= weight_decay:
-            raise ValueError(f"Invalid weight_decay: {weight_decay}")
-
-        defaults = dict(lr=lr, betas=betas, weight_decay=weight_decay)
-        super(Lyon, self).__init__(params, defaults)
-
-    @torch.no_grad()
-    def step(self, closure=None):
-        """Perform a single optimization step."""
-        loss = None
-        if closure is not None:
-            with torch.enable_grad():
-                loss = closure()
-
-        for group in self.param_groups:
-            beta1, beta2 = group['betas']
-            lr = group['lr']
-            weight_decay = group['weight_decay']
-
-            for p in group['params']:
-                if p.grad is None:
-                    continue
-
-                grad = p.grad
-                state = self.state[p]
-
-                # State initialization
-                if len(state) == 0:
-                    state['step'] = 0
-                    state['exp_avg'] = torch.zeros_like(p)
-                    state['exp_avg_sq'] = torch.zeros_like(p)
-
-                exp_avg, exp_avg_sq = state['exp_avg'], state['exp_avg_sq']
-                state['step'] += 1
-
-                # Weight decay
-                if weight_decay != 0:
-                    p.mul_(1 - lr * weight_decay)
-
-                # Update biased first moment estimate
-                exp_avg.mul_(beta1).add_(grad, alpha=1 - beta1)
-
-                # Update biased second raw moment estimate
-                exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1 - beta2)
-
-                # Compute bias-corrected moments
-                bias_correction1 = 1 - beta1 ** state['step']
-                bias_correction2 = 1 - beta2 ** state['step']
-
-                # Lyon uses sign of momentum with second moment normalization
-                step_size = lr / bias_correction1
-
-                # Compute normalized gradient
-                denom = (exp_avg_sq.sqrt() / (bias_correction2 ** 0.5)).add_(1e-8)
-
-                # Apply sign-based update with normalization
-                update = (exp_avg / denom).sign()
-                p.add_(update, alpha=-step_size)
-
-        return loss
+from lion_pytorch import Lion
 
 
 class MMapIndexedDataset(Dataset):
@@ -232,28 +153,22 @@ def compute_kd_loss(
 
 def compute_hidden_supervision_loss(
     student_hidden_states: List[torch.Tensor],
-    teacher_hidden_states: List[torch.Tensor],
-    supervision_layers: List[int]
+    teacher_hidden_states: List[torch.Tensor]
 ) -> torch.Tensor:
-    """Compute MSE loss on hidden states.
+    """Compute MSE loss on all hidden states.
 
     Args:
         student_hidden_states: Hidden states from student (list of tensors)
         teacher_hidden_states: Hidden states from teacher (list of tensors)
-        supervision_layers: Which layers to supervise
 
     Returns:
-        MSE loss averaged over supervised layers
+        MSE loss averaged over all layers
     """
     losses = []
-    for layer_idx in supervision_layers:
-        if layer_idx < len(student_hidden_states) and layer_idx < len(teacher_hidden_states):
-            student_hidden = student_hidden_states[layer_idx]
-            teacher_hidden = teacher_hidden_states[layer_idx]
-
-            # Compute MSE loss
-            loss = F.mse_loss(student_hidden, teacher_hidden)
-            losses.append(loss)
+    # Supervise all layers
+    for student_hidden, teacher_hidden in zip(student_hidden_states, teacher_hidden_states):
+        loss = F.mse_loss(student_hidden, teacher_hidden)
+        losses.append(loss)
 
     if not losses:
         return torch.tensor(0.0, device=student_hidden_states[0].device)
@@ -300,10 +215,10 @@ def train(args):
             config=vars(args)
         )
 
-    # Load tokenizer
-    print(f"Loading tokenizer from {args.vocab_path}")
+    # Load tokenizer from student model
+    print(f"Loading tokenizer from {args.student_model}")
     tokenizer = AutoTokenizer.from_pretrained(
-        args.vocab_path if os.path.isdir(args.vocab_path) else os.path.dirname(args.vocab_path),
+        args.student_model,
         trust_remote_code=True
     )
 
@@ -344,11 +259,10 @@ def train(args):
     )
 
     # Initialize optimizer
-    print(f"Initializing Lyon optimizer with lr={args.lr}")
-    optimizer = Lyon(
+    print(f"Initializing Lion optimizer with lr={args.lr}")
+    optimizer = Lion(
         student_model.parameters(),
         lr=args.lr,
-        betas=(args.beta1, args.beta2),
         weight_decay=args.weight_decay
     )
 
@@ -360,21 +274,15 @@ def train(args):
         num_training_steps=args.num_steps
     )
 
-    # Parse hidden supervision layers
-    hidden_supervision_layers = []
-    if args.hidden_supervision and args.hidden_supervision_layers:
-        hidden_supervision_layers = [int(x) for x in args.hidden_supervision_layers.split(',')]
-        print(f"Using hidden supervision on layers: {hidden_supervision_layers}")
-
     # Training loop
     print(f"\nStarting training for {args.num_steps} steps...")
     print(f"Warmup steps: {num_warmup_steps}")
     print(f"Batch size: {args.batch_size}")
-    print(f"Gradient accumulation steps: {args.gradient_accumulation_steps}")
+    if args.hidden_supervision:
+        print("Hidden supervision enabled on all layers")
 
     student_model.train()
     global_step = 0
-    optimizer.zero_grad()
 
     data_iter = iter(dataloader)
     progress_bar = tqdm(total=args.num_steps, desc="Training")
@@ -399,9 +307,12 @@ def train(args):
         )
 
         # Compute base loss
-        loss = student_outputs.loss / args.gradient_accumulation_steps
+        ntp_loss = student_outputs.loss
+        loss = ntp_loss
 
         # Knowledge distillation if teacher is provided
+        kd_loss = None
+        hidden_loss = None
         if teacher_model is not None:
             with torch.no_grad():
                 teacher_outputs = teacher_model(
@@ -410,57 +321,54 @@ def train(args):
                     return_dict=True
                 )
 
-            # Logit distillation
+            # Logit distillation (temperature=1.0)
             kd_loss = compute_kd_loss(
                 student_outputs.logits,
                 teacher_outputs.logits,
-                temperature=args.kd_temperature
+                temperature=1.0
             )
 
             # Hidden state supervision
             hidden_loss = torch.tensor(0.0, device=device)
-            if args.hidden_supervision and hidden_supervision_layers:
+            if args.hidden_supervision:
                 hidden_loss = compute_hidden_supervision_loss(
                     student_outputs.hidden_states,
-                    teacher_outputs.hidden_states,
-                    hidden_supervision_layers
+                    teacher_outputs.hidden_states
                 )
 
             # Combine losses
-            total_loss = (
-                (1 - args.kd_alpha) * loss +
+            loss = (
+                (1 - args.kd_alpha) * ntp_loss +
                 args.kd_alpha * kd_loss +
                 args.hidden_loss_weight * hidden_loss
             )
-            loss = total_loss / args.gradient_accumulation_steps
 
         # Backward pass
         loss.backward()
 
-        # Update weights
-        if (global_step + 1) % args.gradient_accumulation_steps == 0:
-            # Gradient clipping
-            if args.gradient_clipping > 0:
-                torch.nn.utils.clip_grad_norm_(
-                    student_model.parameters(),
-                    args.gradient_clipping
-                )
+        # Gradient clipping
+        if args.gradient_clipping > 0:
+            torch.nn.utils.clip_grad_norm_(
+                student_model.parameters(),
+                args.gradient_clipping
+            )
 
-            optimizer.step()
-            scheduler.step()
-            optimizer.zero_grad()
+        optimizer.step()
+        scheduler.step()
+        optimizer.zero_grad()
 
         # Logging
         if global_step % args.log_interval == 0:
             metrics = {
-                'loss': loss.item() * args.gradient_accumulation_steps,
+                'loss': loss.item(),
+                'ntp_loss': ntp_loss.item(),
                 'lr': scheduler.get_last_lr()[0],
                 'step': global_step
             }
 
-            if teacher_model is not None:
+            if teacher_model is not None and kd_loss is not None:
                 metrics['kd_loss'] = kd_loss.item()
-                if args.hidden_supervision:
+                if args.hidden_supervision and hidden_loss is not None:
                     metrics['hidden_loss'] = hidden_loss.item()
 
             if args.use_wandb:
@@ -512,44 +420,32 @@ def main():
     # Data arguments
     parser.add_argument('--data_path', type=str, required=True,
                         help='Path to mmap dataset (without .bin/.idx extension)')
-    parser.add_argument('--vocab_path', type=str, required=True,
-                        help='Path to tokenizer')
     parser.add_argument('--seq_length', type=int, default=2048,
                         help='Sequence length')
 
     # Model arguments
     parser.add_argument('--student_model', type=str, default='EleutherAI/deep-ignorance-random-init',
-                        help='Student model to fine-tune')
+                        help='Student model to fine-tune (tokenizer will be loaded from here)')
     parser.add_argument('--teacher_model', type=str, default=None,
                         help='Optional teacher model for distillation (e.g., EleutherAI/deep-ignorance-unfiltered)')
 
     # Knowledge distillation arguments
     parser.add_argument('--kd_alpha', type=float, default=0.5,
                         help='Weight for KD loss vs. CE loss (0=no KD, 1=only KD)')
-    parser.add_argument('--kd_temperature', type=float, default=2.0,
-                        help='Temperature for knowledge distillation')
     parser.add_argument('--hidden_supervision', action='store_true',
-                        help='Enable supervision on hidden states')
-    parser.add_argument('--hidden_supervision_layers', type=str, default='5,10,15,20,25,30',
-                        help='Comma-separated layer indices for hidden supervision')
+                        help='Enable supervision on all hidden states')
     parser.add_argument('--hidden_loss_weight', type=float, default=0.1,
                         help='Weight for hidden state supervision loss')
 
     # Optimization arguments
-    parser.add_argument('--lr', type=float, default=3e-4,
-                        help='Learning rate')
-    parser.add_argument('--beta1', type=float, default=0.9,
-                        help='Beta1 for Lyon optimizer')
-    parser.add_argument('--beta2', type=float, default=0.99,
-                        help='Beta2 for Lyon optimizer')
-    parser.add_argument('--weight_decay', type=float, default=0.1,
-                        help='Weight decay')
+    parser.add_argument('--lr', type=float, default=1e-4,
+                        help='Learning rate (Lion typically uses lower LR than Adam)')
+    parser.add_argument('--weight_decay', type=float, default=1e-2,
+                        help='Weight decay (Lion typically uses higher weight decay than Adam)')
     parser.add_argument('--warmup_ratio', type=float, default=0.01,
                         help='Warmup ratio (fraction of total steps)')
     parser.add_argument('--gradient_clipping', type=float, default=1.0,
                         help='Gradient clipping value')
-    parser.add_argument('--gradient_accumulation_steps', type=int, default=1,
-                        help='Number of gradient accumulation steps')
 
     # Training arguments
     parser.add_argument('--num_steps', type=int, default=10000,
