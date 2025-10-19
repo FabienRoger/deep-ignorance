@@ -52,43 +52,63 @@ def run_experiment(gpu_id, lr, mode):
     """
     # Create run name
     lr_str = f"{lr:.0e}".replace("e-0", "e-").replace("e+0", "e")
-    run_name = f"{mode}_lr{lr_str}_bs{BATCH_SIZE}"
+    run_name = f"v2_{mode}_lr{lr_str}_bs{BATCH_SIZE}"
 
     # Build command
     cmd = [
-        "python", "finetune_simple.py",
-        "--data_path", DATA_PATH,
-        "--student_model", STUDENT_MODEL,
-        "--output_dir", f"./checkpoints/sweep/{run_name}",
-        "--num_steps", str(NUM_STEPS),
-        "--batch_size", str(BATCH_SIZE),
-        "--lr", str(lr),
+        "python",
+        "finetune_simple.py",
+        "--data_path",
+        DATA_PATH,
+        "--student_model",
+        STUDENT_MODEL,
+        "--output_dir",
+        f"./checkpoints/sweep/{run_name}",
+        "--num_steps",
+        str(NUM_STEPS),
+        "--batch_size",
+        str(BATCH_SIZE),
+        "--lr",
+        str(lr),
         "--use_bf16",
         "--use_wandb",
-        "--wandb_project", WANDB_PROJECT,
-        "--wandb_run_name", run_name,
-        "--save_interval", str(SAVE_INTERVAL),
-        "--eval_every", str(EVAL_EVERY),
+        "--wandb_project",
+        WANDB_PROJECT,
+        "--wandb_run_name",
+        run_name,
+        "--save_interval",
+        str(SAVE_INTERVAL),
+        "--eval_every",
+        str(EVAL_EVERY),
     ]
 
     # Add mode-specific arguments
     if mode in ["kd", "kd_mse"]:
-        cmd.extend([
-            "--teacher_model", TEACHER_MODEL,
-        ])
+        cmd.extend(
+            [
+                "--teacher_model",
+                TEACHER_MODEL,
+            ]
+        )
 
         if mode == "kd":
             # Pure KD: kd_alpha=1.0, no hidden supervision
-            cmd.extend([
-                "--kd_alpha", "1.0",
-            ])
+            cmd.extend(
+                [
+                    "--kd_alpha",
+                    "1.0",
+                ]
+            )
         elif mode == "kd_mse":
-            # KD+MSE: kd_alpha=0.5, hidden supervision enabled
-            cmd.extend([
-                "--kd_alpha", "0.5",
-                "--hidden_supervision",
-                "--hidden_loss_weight", "0.1",
-            ])
+            cmd.extend(
+                [
+                    "--kd_alpha",
+                    "1.0",
+                    "--hidden_supervision",
+                    "--hidden_loss_weight",
+                    "0.1",
+                ]
+            )
 
     # Set environment variable for GPU
     env = {"CUDA_VISIBLE_DEVICES": str(gpu_id)}
@@ -120,6 +140,9 @@ def main():
 
     # Create job queue: (lr, mode) pairs
     jobs = [(lr, mode) for mode in MODES for lr in LEARNING_RATES]
+    # shuffle the jobs
+    import random
+    random.Random(42).shuffle(jobs)
 
     # Track running processes: {gpu_id: (process, run_name)}
     running = {gpu_id: None for gpu_id in GPUS}
@@ -148,7 +171,7 @@ def main():
                             # Print last few lines of output
                             stdout, _ = process.communicate()
                             if stdout:
-                                lines = stdout.strip().split('\n')
+                                lines = stdout.strip().split("\n")
                                 print(f"[GPU {gpu_id}] Last output:")
                                 for line in lines[-10:]:
                                     print(f"[GPU {gpu_id}]   {line}")
@@ -165,9 +188,11 @@ def main():
 
             # Print status
             active_jobs = sum(1 for proc in running.values() if proc is not None)
-            print(f"[Status] Active: {active_jobs}/{len(GPUS)} GPUs | "
-                  f"Completed: {job_idx - active_jobs}/{len(jobs)} | "
-                  f"Remaining: {len(jobs) - job_idx}")
+            print(
+                f"[Status] Active: {active_jobs}/{len(GPUS)} GPUs | "
+                f"Completed: {job_idx - active_jobs}/{len(jobs)} | "
+                f"Remaining: {len(jobs) - job_idx}"
+            )
 
             # Wait before next check
             time.sleep(POLL_INTERVAL)
