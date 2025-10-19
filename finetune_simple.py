@@ -334,6 +334,7 @@ def train(args):
 
     student_model.train()
     global_step = 0
+    epoch = 0
 
     progress_bar = tqdm(total=args.num_steps, desc="Training")
 
@@ -351,6 +352,8 @@ def train(args):
                     args.data_path, tokenizer, seq_length=args.seq_length, text_field=args.text_field
                 )
                 example = next(dataset)
+                epoch += 1
+                print(f"\n--- Starting epoch {epoch} ---\n")
 
             batch_input_ids.append(example["input_ids"])
             batch_labels.append(example["labels"])
@@ -406,6 +409,7 @@ def train(args):
             "ntp_loss": ntp_loss.item(),
             "lr": scheduler.get_last_lr()[0],
             "step": global_step,
+            "epoch": epoch,
         }
 
         if teacher_model is not None and kd_loss is not None:

@@ -7,6 +7,14 @@ data = [json.loads(line) for line in path.open("r")]
 # %%
 print(data[1])
 # %%
+from matplotlib import pyplot as plt
+plt.scatter(
+    range(len(data)),
+    [len(item['text']) for item in data],
+    marker='.',
+    alpha=0.1,
+)
+# %%
 """Explore filtered dataset results from Arrow files."""
 
 from datasets import load_from_disk
