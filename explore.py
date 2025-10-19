@@ -190,3 +190,36 @@ for p in range(outputs.hidden_states[-1].shape[1]):
     )
     print(f"Position {p}: MSE loss: {mse_loss_pos.item():.6f}")
 # %%
+# same for KL divergence, per position
+def compute_kd_loss(
+    student_logits: torch.Tensor, teacher_logits: torch.Tensor, temperature: float = 2.0
+) -> torch.Tensor:
+    """Compute knowledge distillation loss.
+
+    Args:
+        student_logits: Logits from student model [batch, seq_len, vocab]
+        teacher_logits: Logits from teacher model [batch, seq_len, vocab]
+        temperature: Temperature for softening distributions
+
+    Returns:
+        KL divergence loss
+    """
+    # Soften distributions
+    student_soft = F.log_softmax(student_logits / temperature, dim=-1)
+    teacher_soft = F.softmax(teacher_logits / temperature, dim=-1)
+
+    # Compute KL divergence: sum over vocab (dim=-1), then mean over batch and sequence
+    kd_loss = F.kl_div(student_soft, teacher_soft, reduction="none")  # [batch, seq_len, vocab]
+    kd_loss = kd_loss.sum(dim=-1)  # Sum over vocabulary -> [batch, seq_len]
+    kd_loss = kd_loss.mean()  # Mean over batch and sequence
+    kd_loss = kd_loss * (temperature**2)  # Scale by temperature^2
+
+    return kd_loss
+
+for p in range(outputs.hidden_states[-1].shape[1]):
+    kd_loss_pos = compute_kd_loss(
+        outputs.logits[:, p:p+1, :],
+        outputst.logits[:, p:p+1, :]
+    )
+    print(f"Position {p}: KD loss: {kd_loss_pos.item():.6f}")
+# %%

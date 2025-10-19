@@ -189,8 +189,8 @@ def compute_kd_loss(
         KL divergence loss
     """
     # Soften distributions
-    student_soft = F.log_softmax(student_logits[:, 1:, :] / temperature, dim=-1)
-    teacher_soft = F.softmax(teacher_logits[:, 1:, :] / temperature, dim=-1)
+    student_soft = F.log_softmax(student_logits / temperature, dim=-1)
+    teacher_soft = F.softmax(teacher_logits / temperature, dim=-1)
 
     # Compute KL divergence: sum over vocab (dim=-1), then mean over batch and sequence
     kd_loss = F.kl_div(student_soft, teacher_soft, reduction="none")  # [batch, seq_len, vocab]
