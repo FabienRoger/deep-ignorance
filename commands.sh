@@ -42,19 +42,21 @@ python download_filtered_dataset.py \
 # 3. FINE-TUNING: Train models with Lion optimizer
 # ============================================================================
 
-# Basic fine-tuning without teacher (requires mmap dataset)
+# Fine-tuning from JSONL file with evaluation
 python finetune_simple.py \
-    --data_path=/path/to/data_text_document \
+    --data_path=filtered_output_test/retained_dataset.jsonl \
     --student_model=EleutherAI/deep-ignorance-random-init \
     --output_dir=./checkpoints/finetuned \
     --num_steps=10000 \
     --batch_size=8 \
     --use_bf16 \
+    --eval_every=500 \
+    --eval_task=wmdp_bio \
     --use_wandb
 
-# Fine-tuning with teacher model and hidden state supervision
+# Fine-tuning with teacher model, hidden state supervision, and evaluation
 python finetune_simple.py \
-    --data_path=/path/to/data_text_document \
+    --data_path=filtered_output_test/retained_dataset.jsonl \
     --teacher_model=EleutherAI/deep-ignorance-unfiltered \
     --student_model=EleutherAI/deep-ignorance-random-init \
     --hidden_supervision \
@@ -64,9 +66,11 @@ python finetune_simple.py \
     --num_steps=50000 \
     --batch_size=8 \
     --use_bf16 \
+    --eval_every=1000 \
+    --eval_task=wmdp_bio \
     --use_wandb \
-    --save_interval=5000 \
-    --log_interval=10
+    --save_interval=5000
+
 
 # ============================================================================
 # 4. EVALUATION: Evaluate models on WMDP benchmarks
