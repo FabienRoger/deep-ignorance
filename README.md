@@ -71,6 +71,7 @@ python filter.py --filtering_dataset=EleutherAI/dataset-name --splits=train
 
 # Full pipeline with all filters
 python filter.py --lm_filter=LM --log_judgments --use_wandb --filtering_dataset=EleutherAI/dataset-name
+python filter.py --lm_filter=LM --log_judgments --use_wandb --save_every=0.01 --filtering_dataset=EleutherAI/filtering-annealing-mix --backend ""
 
 # With checkpoint saving for large datasets
 python filter.py --save_every=0.01 --filtering_dataset=EleutherAI/dataset-name
