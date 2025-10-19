@@ -31,7 +31,7 @@ def parse_arguments():
     parser.add_argument(
         "--base-dataset-path",
         type=str,
-        # default="EleutherAI/filtering-pretraining-mix",
+        # default="(EleutherAI/filtering-pretraining-mix)",
         help="Path to the base dataset that needs to be filtered.",
     )
     parser.add_argument("--insert-dataset-path", type=str, help="Path to the dataset that needs to be inserted into the dataset after filtering.")
@@ -154,15 +154,33 @@ def main():
             print(f"Overwriting BERT decision using threshold {args.bert_threshold}")
             filter_results_dataset = filter_results_dataset.map(lambda x: {"bert_filter": x["bert_filter_metadata"]["highest_score"] >= args.bert_threshold}, num_proc=args.num_proc)
 
-        # Check that the length of the filter results dataset is the same as the base dataset
+        # Check that the filter results dataset is a subset or equal to the base dataset
         if args.num_samples is None:
-            assert len(base_dataset) == len(filter_results_dataset), f"Base dataset and filter results dataset have different lengths: {len(base_dataset)} != {len(filter_results_dataset)}"
-            print(f"Confirmed that the base dataset and filter results dataset have the same length: {len(base_dataset)}")
+            if len(filter_results_dataset) == len(base_dataset):
+                print(f"Filter results dataset has the same length as base dataset: {len(base_dataset)}")
+            elif len(filter_results_dataset) < len(base_dataset):
+                print(f"Filter results dataset is a subset of base dataset:")
+                print(f"  - Base dataset size: {len(base_dataset)}")
+                print(f"  - Filter results size: {len(filter_results_dataset)}")
+                print(f"  - Coverage: {100 * len(filter_results_dataset) / len(base_dataset):.2f}%")
+                print(f"Documents not in filter results will be retained by default")
+            else:
+                raise ValueError(f"Filter results dataset is larger than base dataset: {len(filter_results_dataset)} > {len(base_dataset)}")
 
         # If num_samples is specified, take only the first N samples
         if args.num_samples is not None:
             print(f"Limiting to first {args.num_samples} samples of the filter results dataset")
             filter_results_dataset = filter_results_dataset.select(range(min(args.num_samples, len(filter_results_dataset))))
+
+        # Get all IDs that have filter results
+        print("Creating set of all IDs in filter results")
+        all_filter_result_ids = set(filter_results_dataset["id"])
+        print(f"Number of documents with filter results: {len(all_filter_result_ids)}")
+
+        # Restrict base dataset to only documents that have filter results
+        print("Restricting base dataset to documents with filter results")
+        base_dataset = base_dataset.filter(lambda row: row["id"] in all_filter_result_ids, num_proc=args.num_proc, desc="Restricting to filtered documents")
+        print(f"Base dataset restricted to {len(base_dataset)} documents")
 
         print(f"Extracting filtered records using {args.decision_filter}")
         filtered_records = filter_results_dataset.filter(lambda row: row[args.decision_filter], num_proc=args.num_proc, desc="Extracting filtered records")

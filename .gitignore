@@ -10,3 +10,6 @@ neox/ssh_keys
 core.*
 *.log
 __pycache__
+filtered_output/
+filtered_output_test/
+checkpoints/
