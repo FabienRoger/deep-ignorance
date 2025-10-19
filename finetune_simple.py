@@ -417,6 +417,11 @@ def train(args):
             if args.hidden_supervision and hidden_loss is not None:
                 metrics["hidden_loss"] = hidden_loss.item()
 
+        # Print metrics
+        if global_step % 10 == 0:  # Print every 10 steps to avoid spam
+            metric_str = " | ".join([f"{k}: {v:.6f}" if isinstance(v, float) else f"{k}: {v}" for k, v in metrics.items()])
+            print(f"Step {global_step} | {metric_str}")
+
         if args.use_wandb:
             wandb.log(metrics, step=global_step)
 
@@ -514,6 +519,7 @@ def main():
     parser.add_argument("--gradient_clipping", type=float, default=1.0, help="Gradient clipping value")
 
     # Training arguments
+    # >185_675/batchsize will multi epoch
     parser.add_argument("--num_steps", type=int, default=10000, help="Number of training steps")
     parser.add_argument("--batch_size", type=int, default=8, help="Batch size (number of sequences per step)")
     parser.add_argument("--use_bf16", action="store_true", help="Use bfloat16 precision")

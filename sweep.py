@@ -116,13 +116,10 @@ def run_experiment(gpu_id, lr, mode):
     print(f"[GPU {gpu_id}] Starting: {run_name}")
     print(f"[GPU {gpu_id}] Command: {' '.join(cmd)}")
 
-    # Run the command
+    # Run the command (don't capture output to avoid pipe buffer issues)
     process = subprocess.Popen(
         cmd,
         env={**subprocess.os.environ.copy(), **env},
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
     )
 
     return process, run_name
@@ -168,13 +165,6 @@ def main():
                             print(f"[GPU {gpu_id}] ✓ Completed: {run_name}")
                         else:
                             print(f"[GPU {gpu_id}] ✗ Failed (code {retcode}): {run_name}")
-                            # Print last few lines of output
-                            stdout, _ = process.communicate()
-                            if stdout:
-                                lines = stdout.strip().split("\n")
-                                print(f"[GPU {gpu_id}] Last output:")
-                                for line in lines[-10:]:
-                                    print(f"[GPU {gpu_id}]   {line}")
 
                         running[gpu_id] = None
 

@@ -68,3 +68,34 @@ if filter_cols:
             print(f"Filtered: {df[col].sum()} / {len(df)} ({100*df[col].sum()/len(df):.2f}%)")
 
 # %%
+"""Test JSONLDataset loading and iteration."""
+import sys
+sys.path.insert(0, '/data2/Users/fabien/deep-ignorance')
+
+from finetune_simple import JSONLDataset
+from transformers import AutoTokenizer
+
+# Load tokenizer
+tokenizer = AutoTokenizer.from_pretrained("EleutherAI/deep-ignorance-random-init", trust_remote_code=True)
+
+# Create dataset
+dataset = JSONLDataset(
+    jsonl_path="filtered_output_test/retained_dataset.jsonl",
+    tokenizer=tokenizer,
+    seq_length=2048,
+    text_field="text",
+    batch_size=100
+)
+
+# Test iteration
+print("Testing dataset iteration...")
+for i in range(1000000):
+    example = next(dataset)
+    print(f"\nExample {i}:")
+    print(f"  input_ids shape: {example['input_ids'].shape}")
+    # print(f"  labels shape: {example['labels'].shape}")
+    # print(f"  First 10 tokens: {example['input_ids'][:10].tolist()}")
+    # print(f"  Are input_ids and labels the same? {(example['input_ids'] == example['labels']).all()}")
+
+print("\nDataset iteration test completed successfully!")
+# %%

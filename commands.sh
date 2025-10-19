@@ -71,6 +71,11 @@ python finetune_simple.py \
     --use_wandb \
     --save_interval=5000
 
+# Test runs on GPU 3 (NTP, KD, KD+MSE)
+CUDA_VISIBLE_DEVICES=3 python finetune_simple.py --data_path=filtered_output_test/retained_dataset.jsonl --student_model=EleutherAI/deep-ignorance-random-init --output_dir=./checkpoints/test_ntp --num_steps=10000 --batch_size=2 --lr=1e-5 --use_bf16 --eval_every=1000 --use_wandb --wandb_run_name=test_ntp --save_interval=0 ;
+CUDA_VISIBLE_DEVICES=3 python finetune_simple.py --data_path=filtered_output_test/retained_dataset.jsonl --teacher_model=EleutherAI/deep-ignorance-unfiltered --student_model=EleutherAI/deep-ignorance-random-init --kd_alpha=1.0 --output_dir=./checkpoints/test_kd --num_steps=10000 --batch_size=2 --lr=1e-5 --use_bf16 --eval_every=1000 --use_wandb --wandb_run_name=test_kd --save_interval=0 ;
+CUDA_VISIBLE_DEVICES=3 python finetune_simple.py --data_path=filtered_output_test/retained_dataset.jsonl --teacher_model=EleutherAI/deep-ignorance-unfiltered --student_model=EleutherAI/deep-ignorance-random-init --kd_alpha=1.0 --hidden_supervision --hidden_loss_weight=0.1 --output_dir=./checkpoints/test_kd_mse --num_steps=10000 --batch_size=2 --lr=1e-5 --use_bf16 --eval_every=1000 --use_wandb --wandb_run_name=test_kd_mse --save_interval=0
+
 
 # ============================================================================
 # 4. EVALUATION: Evaluate models on WMDP benchmarks
