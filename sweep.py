@@ -24,7 +24,7 @@ STUDENT_MODEL = "EleutherAI/deep-ignorance-random-init"
 TEACHER_MODEL = "EleutherAI/deep-ignorance-unfiltered"
 
 # Training settings
-NUM_STEPS = 10000
+NUM_STEPS = 2000
 BATCH_SIZE = 2
 SAVE_INTERVAL = 0
 EVAL_EVERY = 1000
@@ -52,7 +52,7 @@ def run_experiment(gpu_id, lr, mode):
     """
     # Create run name
     lr_str = f"{lr:.0e}".replace("e-0", "e-").replace("e+0", "e")
-    run_name = f"v2_{mode}_lr{lr_str}_bs{BATCH_SIZE}"
+    run_name = f"v3_{mode}_lr{lr_str}_bs{BATCH_SIZE}"
 
     # Build command
     cmd = [
@@ -106,7 +106,7 @@ def run_experiment(gpu_id, lr, mode):
                     "1.0",
                     "--hidden_supervision",
                     "--hidden_loss_weight",
-                    "0.1",
+                    "1.0",
                 ]
             )
 
@@ -139,6 +139,7 @@ def main():
     jobs = [(lr, mode) for mode in MODES for lr in LEARNING_RATES]
     # shuffle the jobs
     import random
+
     random.Random(42).shuffle(jobs)
 
     # Track running processes: {gpu_id: (process, run_name)}

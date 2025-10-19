@@ -189,8 +189,8 @@ def compute_kd_loss(
         KL divergence loss
     """
     # Soften distributions
-    student_soft = F.log_softmax(student_logits / temperature, dim=-1)
-    teacher_soft = F.softmax(teacher_logits / temperature, dim=-1)
+    student_soft = F.log_softmax(student_logits[:, 1:, :] / temperature, dim=-1)
+    teacher_soft = F.softmax(teacher_logits[:, 1:, :] / temperature, dim=-1)
 
     # Compute KL divergence: sum over vocab (dim=-1), then mean over batch and sequence
     kd_loss = F.kl_div(student_soft, teacher_soft, reduction="none")  # [batch, seq_len, vocab]
@@ -216,7 +216,7 @@ def compute_hidden_supervision_loss(
     losses = []
     # Supervise all layers
     for student_hidden, teacher_hidden in zip(student_hidden_states, teacher_hidden_states):
-        loss = F.mse_loss(student_hidden, teacher_hidden)
+        loss = F.mse_loss(student_hidden[:, 1:, :], teacher_hidden[:, 1:, :])
         losses.append(loss)
 
     if not losses:
@@ -419,7 +419,9 @@ def train(args):
 
         # Print metrics
         if global_step % 10 == 0:  # Print every 10 steps to avoid spam
-            metric_str = " | ".join([f"{k}: {v:.6f}" if isinstance(v, float) else f"{k}: {v}" for k, v in metrics.items()])
+            metric_str = " | ".join(
+                [f"{k}: {v:.6f}" if isinstance(v, float) else f"{k}: {v}" for k, v in metrics.items()]
+            )
             print(f"Step {global_step} | {metric_str}")
 
         if args.use_wandb:

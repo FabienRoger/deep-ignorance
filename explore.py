@@ -99,3 +99,94 @@ for i in range(1000000):
 
 print("\nDataset iteration test completed successfully!")
 # %%
+from transformers import AutoModelForCausalLM
+
+model = AutoModelForCausalLM.from_pretrained("EleutherAI/deep-ignorance-random-init", trust_remote_code=True)
+
+# %%
+from transformers import AutoModelForCausalLM
+
+modelt = AutoModelForCausalLM.from_pretrained("EleutherAI/deep-ignorance-unfiltered", trust_remote_code=True)
+
+# %%
+inputs = tokenizer("Hello, world!" * 100, return_tensors="pt")
+
+# add bos token at the beginning
+inputs['input_ids'] = torch.cat([torch.tensor([[tokenizer.bos_token_id]]), inputs['input_ids']], dim=1)
+inputs['attention_mask'] = torch.cat([torch.tensor([[1]]), inputs['attention_mask']], dim=1)
+
+outputs = model(**inputs, output_hidden_states=True, return_dict=True)
+outputst = modelt(**inputs, output_hidden_states=True, return_dict=True)
+outputs.hidden_states[-1].shape
+# %%
+import torch.nn.functional as F
+
+# compute mse between hs at -1 and -2
+
+mse_loss = F.mse_loss(outputs.hidden_states[10], outputs.hidden_states[1])
+print(mse_loss)
+# %%
+(outputs.hidden_states[10] - outputs.hidden_states[1]).square().mean()
+# %%
+# mse between student and teacher last hidden states
+mse_loss_st = F.mse_loss(outputs.hidden_states[-1], outputst.hidden_states[-1])
+print(mse_loss_st)
+# %%
+from typing import List
+import torch
+
+def compute_hidden_supervision_loss(
+    student_hidden_states: List[torch.Tensor], teacher_hidden_states: List[torch.Tensor]
+) -> torch.Tensor:
+    """Compute MSE loss on all hidden states.
+
+    Args:
+        student_hidden_states: Hidden states from student (list of tensors)
+        teacher_hidden_states: Hidden states from teacher (list of tensors)
+
+    Returns:
+        MSE loss averaged over all layers
+    """
+    losses = []
+    # Supervise all layers
+    l = 0
+    for student_hidden, teacher_hidden in zip(student_hidden_states, teacher_hidden_states):
+        loss = F.mse_loss(student_hidden, teacher_hidden)
+        # print(loss)
+        # # print the max magnitude of any coordinate
+        # max_cor = torch.max(torch.abs(student_hidden)).item()
+        # max_cor_t = torch.max(torch.abs(teacher_hidden)).item()
+        # max_diff = torch.max(torch.abs(student_hidden - teacher_hidden)).item()
+        # print(f"Max coord student: {max_cor:.6f}, teacher: {max_cor_t:.6f}, max diff: {max_diff:.6f}")
+        # l += 1
+        # # print full teacher if layer 5
+        # if l == 10:
+        #     b, s, d = teacher_hidden.shape
+        #     for i in range(b):
+        #         for j in range(s):
+        #             for k in range(d):
+        #                 if abs(teacher_hidden[i,j,k].item()) > 100:
+        #                     print(f"teacher_hidden[{i},{j},{k}] = {teacher_hidden[i,j,k].item():.6f}")
+        # print(student_hidden.shape, teacher_hidden.shape)
+        # print(student_hidden[0, :5, :5])
+        # print(teacher_hidden[0, :5, :5])
+        losses.append(loss)
+
+    if not losses:
+        return torch.tensor(0.0, device=student_hidden_states[0].device)
+
+    return torch.stack(losses).mean()
+
+print(compute_hidden_supervision_loss(
+    outputs.hidden_states,
+    outputst.hidden_states
+))
+# %%
+# compute per position
+for p in range(outputs.hidden_states[-1].shape[1]):
+    mse_loss_pos = compute_hidden_supervision_loss(
+        [h[:, p:p+1, :] for h in outputs.hidden_states],
+        [h[:, p:p+1, :] for h in outputst.hidden_states]
+    )
+    print(f"Position {p}: MSE loss: {mse_loss_pos.item():.6f}")
+# %%
