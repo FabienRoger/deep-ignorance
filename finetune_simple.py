@@ -135,7 +135,7 @@ class JSONLDataset:
 
         # Add BOS/EOS and extend buffer
         for input_ids in tokenized["input_ids"]:
-            doc_tokens = [self.bos_token_id] + input_ids + [self.eos_token_id]
+            doc_tokens = [self.eos_token_id] + input_ids  # + [self.eos_token_id]
             self.token_buffer.extend(doc_tokens)
 
         self.doc_index = end_idx
@@ -216,7 +216,13 @@ def compute_hidden_supervision_loss(
     losses = []
     # Supervise all layers
     for student_hidden, teacher_hidden in zip(student_hidden_states, teacher_hidden_states):
-        loss = F.mse_loss(student_hidden[:, 1:, :], teacher_hidden[:, 1:, :])
+        student_flattened = student_hidden.reshape(-1, student_hidden.shape[-1])
+        teacher_flattened = teacher_hidden.reshape(-1, teacher_hidden.shape[-1])
+        teacher_too_big_positions = teacher_flattened.square().mean(dim=1) > 1e2
+        student_filtered = student_flattened[~teacher_too_big_positions]
+        teacher_filtered = teacher_flattened[~teacher_too_big_positions]
+
+        loss = F.mse_loss(student_filtered, teacher_filtered)
         losses.append(loss)
 
     if not losses:

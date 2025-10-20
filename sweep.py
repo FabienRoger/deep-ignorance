@@ -52,7 +52,7 @@ def run_experiment(gpu_id, lr, mode):
     """
     # Create run name
     lr_str = f"{lr:.0e}".replace("e-0", "e-").replace("e+0", "e")
-    run_name = f"v3_{mode}_lr{lr_str}_bs{BATCH_SIZE}"
+    run_name = f"v5_{mode}_lr{lr_str}_bs{BATCH_SIZE}"
 
     # Build command
     cmd = [

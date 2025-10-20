@@ -109,11 +109,17 @@ from transformers import AutoModelForCausalLM
 modelt = AutoModelForCausalLM.from_pretrained("EleutherAI/deep-ignorance-unfiltered", trust_remote_code=True)
 
 # %%
-inputs = tokenizer("Hello, world!" * 100, return_tensors="pt")
+# inputs = tokenizer("Hello, world!" * 100, return_tensors="pt")
 
-# add bos token at the beginning
-inputs['input_ids'] = torch.cat([torch.tensor([[tokenizer.bos_token_id]]), inputs['input_ids']], dim=1)
-inputs['attention_mask'] = torch.cat([torch.tensor([[1]]), inputs['attention_mask']], dim=1)
+# # add bos token at the beginning
+# inputs['input_ids'] = torch.cat([torch.tensor([[tokenizer.bos_token_id]]), inputs['input_ids']], dim=1)
+# inputs['attention_mask'] = torch.cat([torch.tensor([[1]]), inputs['attention_mask']], dim=1)
+
+inputs = tokenizer("Hello, world!", return_tensors="pt")
+# insert bos token at the beginning and repeat 5 times
+inputs['input_ids'] = torch.cat([torch.tensor([[tokenizer.bos_token_id]]), inputs['input_ids']], dim=1).repeat(1,5)
+inputs['attention_mask'] = torch.cat([torch.tensor([[1]]), inputs['attention_mask']], dim=1).repeat(1,5)
+
 
 outputs = model(**inputs, output_hidden_states=True, return_dict=True)
 outputst = modelt(**inputs, output_hidden_states=True, return_dict=True)
@@ -189,6 +195,13 @@ for p in range(outputs.hidden_states[-1].shape[1]):
         [h[:, p:p+1, :] for h in outputst.hidden_states]
     )
     print(f"Position {p}: MSE loss: {mse_loss_pos.item():.6f}")
+# %%
+# compute teacher mangitude per layer per position
+for l, h in enumerate(outputst.hidden_states):
+    for p in range(h.shape[1]):
+        teacher_pos = h[:, p:p+1, :]
+        max_cor_t = teacher_pos.square().mean().item()
+        print(f"Layer {l}, Position {p}: Max coord teacher: {max_cor_t:.6f}")
 # %%
 # same for KL divergence, per position
 def compute_kd_loss(
