@@ -24,15 +24,17 @@ STUDENT_MODEL = "EleutherAI/deep-ignorance-random-init"
 TEACHER_MODEL = "EleutherAI/deep-ignorance-unfiltered"
 
 # Training settings
-NUM_STEPS = 2000
+# NUM_STEPS = 2000
 BATCH_SIZE = 2
 SAVE_INTERVAL = 0
 EVAL_EVERY = 1000
 
 # Sweep settings
-GPUS = [4, 5, 6, 7]
+# GPUS = [4, 5, 6, 7]
+GPUS = [5, 6, 7]
 # LEARNING_RATES = [1e-7, 3e-7, 1e-6, 3e-6, 1e-5, 3e-5, 1e-4, 3e-4]
-LEARNING_RATES = [1e-6, 3e-6, 1e-5, 3e-5, 1e-4, 3e-4]
+# LEARNING_RATES = [1e-6, 3e-6, 1e-5, 3e-5, 1e-4, 3e-4]
+LEARNING_RATES = [3e-5]
 MODES = ["ntp", "kd", "kd_mse"]  # ntp, kd, kd_mse
 
 # Logging
@@ -52,7 +54,7 @@ def run_experiment(gpu_id, lr, mode):
     """
     # Create run name
     lr_str = f"{lr:.0e}".replace("e-0", "e-").replace("e+0", "e")
-    run_name = f"v5_{mode}_lr{lr_str}_bs{BATCH_SIZE}"
+    run_name = f"v5l_{mode}_lr{lr_str}_bs{BATCH_SIZE}"
 
     # Build command
     cmd = [

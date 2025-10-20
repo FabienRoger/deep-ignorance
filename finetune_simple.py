@@ -251,7 +251,7 @@ def evaluate_model(model, task="wmdp_bio", limit=None):
             device=model.device,
             verbosity="ERROR",
             limit=limit,
-            num_fewshot=0,
+            num_fewshot=16,
         )
         del hflm_model
         try:
