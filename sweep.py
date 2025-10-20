@@ -25,6 +25,7 @@ TEACHER_MODEL = "EleutherAI/deep-ignorance-unfiltered"
 
 # Training settings
 # NUM_STEPS = 2000
+NUM_STEPS = 20000
 BATCH_SIZE = 2
 SAVE_INTERVAL = 0
 EVAL_EVERY = 1000
