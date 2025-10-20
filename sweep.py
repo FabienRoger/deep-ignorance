@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Launch hyperparameter sweep across multiple GPUs.
 
-Sweeps over learning rates with 3 training modes:
+Sweeps over learning rates with 4 training modes:
 - Pure NTP (no teacher)
 - Pure KD (kd_alpha=1.0, no hidden supervision)
-- KD+MSE (kd_alpha=0.5, hidden supervision)
+- KD+MSE (kd_alpha=1.0, hidden_loss_weight=1.0)
+- KD+MSE More (kd_alpha=1.0, hidden_loss_weight=10.0)
 
 Each GPU runs one job at a time.
 """
@@ -32,11 +33,13 @@ EVAL_EVERY = 1000
 
 # Sweep settings
 # GPUS = [4, 5, 6, 7]
-GPUS = [5, 6, 7]
+# GPUS = [5, 6, 7]
+GPUS = [3]
 # LEARNING_RATES = [1e-7, 3e-7, 1e-6, 3e-6, 1e-5, 3e-5, 1e-4, 3e-4]
 # LEARNING_RATES = [1e-6, 3e-6, 1e-5, 3e-5, 1e-4, 3e-4]
 LEARNING_RATES = [3e-5]
-MODES = ["ntp", "kd", "kd_mse"]  # ntp, kd, kd_mse
+# MODES = ["ntp", "kd", "kd_mse", "kd_mse_more"]  # All 4 modes for v6
+MODES = ["kd_mse_more"]  # All 4 modes for v6
 
 # Logging
 WANDB_PROJECT = "deep-ignorance-sweep"
@@ -55,7 +58,7 @@ def run_experiment(gpu_id, lr, mode):
     """
     # Create run name
     lr_str = f"{lr:.0e}".replace("e-0", "e-").replace("e+0", "e")
-    run_name = f"v5l_{mode}_lr{lr_str}_bs{BATCH_SIZE}"
+    run_name = f"v6_{mode}_lr{lr_str}_bs{BATCH_SIZE}"
 
     # Build command
     cmd = [
@@ -86,7 +89,7 @@ def run_experiment(gpu_id, lr, mode):
     ]
 
     # Add mode-specific arguments
-    if mode in ["kd", "kd_mse"]:
+    if mode in ["kd", "kd_mse", "kd_mse_more"]:
         cmd.extend(
             [
                 "--teacher_model",
@@ -110,6 +113,16 @@ def run_experiment(gpu_id, lr, mode):
                     "--hidden_supervision",
                     "--hidden_loss_weight",
                     "1.0",
+                ]
+            )
+        elif mode == "kd_mse_more":
+            cmd.extend(
+                [
+                    "--kd_alpha",
+                    "1.0",
+                    "--hidden_supervision",
+                    "--hidden_loss_weight",
+                    "10.0",
                 ]
             )
 

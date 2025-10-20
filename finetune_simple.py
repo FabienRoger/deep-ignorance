@@ -204,7 +204,12 @@ def compute_kd_loss(
 def compute_hidden_supervision_loss(
     student_hidden_states: List[torch.Tensor], teacher_hidden_states: List[torch.Tensor]
 ) -> torch.Tensor:
-    """Compute MSE loss on all hidden states.
+    """Compute MSE loss on all hidden states with normalization.
+
+    This uses a normalized approach to focus on the direction of hidden states
+    rather than their magnitude, which helps avoid numerical issues with large
+    activations and ensures we learn from all positions (including important
+    high-magnitude features).
 
     Args:
         student_hidden_states: Hidden states from student (list of tensors)
@@ -218,11 +223,12 @@ def compute_hidden_supervision_loss(
     for student_hidden, teacher_hidden in zip(student_hidden_states, teacher_hidden_states):
         student_flattened = student_hidden.reshape(-1, student_hidden.shape[-1])
         teacher_flattened = teacher_hidden.reshape(-1, teacher_hidden.shape[-1])
-        teacher_too_big_positions = teacher_flattened.square().mean(dim=1) > 1e2
-        student_filtered = student_flattened[~teacher_too_big_positions]
-        teacher_filtered = teacher_flattened[~teacher_too_big_positions]
+        # teacher_too_big_positions = teacher_flattened.square().mean(dim=1) > 1e2
+        # student_filtered = student_flattened[~teacher_too_big_positions]
+        # teacher_filtered = teacher_flattened[~teacher_too_big_positions]
 
-        loss = F.mse_loss(student_filtered, teacher_filtered)
+        # loss = F.mse_loss(student_filtered, teacher_filtered)
+        loss = (1.0 - F.cosine_similarity(student_flattened, teacher_flattened, dim=1)).pow(3).mean()
         losses.append(loss)
 
     if not losses:

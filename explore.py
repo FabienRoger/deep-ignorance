@@ -89,7 +89,8 @@ dataset = JSONLDataset(
 
 # Test iteration
 print("Testing dataset iteration...")
-for i in range(1000000):
+# for i in range(1000000):
+for i in range(1000):
     example = next(dataset)
     print(f"\nExample {i}:")
     print(f"  input_ids shape: {example['input_ids'].shape}")
@@ -107,8 +108,11 @@ model = AutoModelForCausalLM.from_pretrained("EleutherAI/deep-ignorance-random-i
 from transformers import AutoModelForCausalLM
 
 modelt = AutoModelForCausalLM.from_pretrained("EleutherAI/deep-ignorance-unfiltered", trust_remote_code=True)
+# %%
+models = AutoModelForCausalLM.from_pretrained("EleutherAI/deep-ignorance-e2e-weak-filter", trust_remote_code=True)
 
 # %%
+import torch
 # inputs = tokenizer("Hello, world!" * 100, return_tensors="pt")
 
 # # add bos token at the beginning
@@ -123,6 +127,7 @@ inputs['attention_mask'] = torch.cat([torch.tensor([[1]]), inputs['attention_mas
 
 outputs = model(**inputs, output_hidden_states=True, return_dict=True)
 outputst = modelt(**inputs, output_hidden_states=True, return_dict=True)
+outputss = models(**inputs, output_hidden_states=True, return_dict=True)
 outputs.hidden_states[-1].shape
 # %%
 import torch.nn.functional as F
@@ -156,8 +161,25 @@ def compute_hidden_supervision_loss(
     losses = []
     # Supervise all layers
     l = 0
-    for student_hidden, teacher_hidden in zip(student_hidden_states, teacher_hidden_states):
-        loss = F.mse_loss(student_hidden, teacher_hidden)
+    for student_hidden, teacher_hidden in zip(student_hidden_states, teacher_hidden_states, strict=True):
+        student_flattened = student_hidden.reshape(-1, student_hidden.shape[-1])
+        teacher_flattened = teacher_hidden.reshape(-1, teacher_hidden.shape[-1])
+        
+
+        # Normalize by magnitude to focus on direction, not scale
+        # teacher_norm = torch.norm(teacher_flattened, dim=1, keepdim=True).clamp(min=1e-8)
+        # student_norm = torch.norm(student_flattened, dim=1, keepdim=True).clamp(min=1e-8)
+        # teacher_normalized = teacher_flattened / teacher_norm
+        # student_normalized = student_flattened / student_norm
+
+        # loss = F.mse_loss(student_normalized, teacher_normalized)
+        # cosine
+        loss = (1.0 - F.cosine_similarity(student_flattened, teacher_flattened, dim=1)).pow(3).mean()
+        # loss = 1.0 - F.cosine_similarity(student_flattened, teacher_flattened, dim=1).mean()
+        losses.append(loss)
+        
+        
+        # loss = F.mse_loss(student_hidden, teacher_hidden)
         # print(loss)
         # # print the max magnitude of any coordinate
         # max_cor = torch.max(torch.abs(student_hidden)).item()
@@ -187,11 +209,23 @@ print(compute_hidden_supervision_loss(
     outputs.hidden_states,
     outputst.hidden_states
 ))
-# %%
+# # %%
 # compute per position
 for p in range(outputs.hidden_states[-1].shape[1]):
     mse_loss_pos = compute_hidden_supervision_loss(
         [h[:, p:p+1, :] for h in outputs.hidden_states],
+        [h[:, p:p+1, :] for h in outputst.hidden_states]
+    )
+    print(f"Position {p}: MSE loss: {mse_loss_pos.item():.6f}")
+print("weak")
+print(compute_hidden_supervision_loss(
+    outputss.hidden_states,
+    outputst.hidden_states
+))
+# compute per position
+for p in range(outputss.hidden_states[-1].shape[1]):
+    mse_loss_pos = compute_hidden_supervision_loss(
+        [h[:, p:p+1, :] for h in outputss.hidden_states],
         [h[:, p:p+1, :] for h in outputst.hidden_states]
     )
     print(f"Position {p}: MSE loss: {mse_loss_pos.item():.6f}")
