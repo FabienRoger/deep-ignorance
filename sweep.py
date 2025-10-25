@@ -21,12 +21,13 @@ from pathlib import Path
 
 # Data and model paths
 DATA_PATH = "filtered_output_test/retained_dataset.jsonl"
-STUDENT_MODEL = "EleutherAI/deep-ignorance-random-init"
+STUDENT_MODEL = "EleutherAI/deep-ignorance-e2e-weak-filter"
+# STUDENT_MODEL = "EleutherAI/deep-ignorance-random-init"
 TEACHER_MODEL = "EleutherAI/deep-ignorance-unfiltered"
 
 # Training settings
-# NUM_STEPS = 2000
-NUM_STEPS = 20000
+NUM_STEPS = 2000
+# NUM_STEPS = 20000
 BATCH_SIZE = 2
 SAVE_INTERVAL = 0
 EVAL_EVERY = 1000
@@ -34,12 +35,12 @@ EVAL_EVERY = 1000
 # Sweep settings
 # GPUS = [4, 5, 6, 7]
 # GPUS = [5, 6, 7]
-GPUS = [3]
+GPUS = [3, 4, 6, 7]
 # LEARNING_RATES = [1e-7, 3e-7, 1e-6, 3e-6, 1e-5, 3e-5, 1e-4, 3e-4]
 # LEARNING_RATES = [1e-6, 3e-6, 1e-5, 3e-5, 1e-4, 3e-4]
 LEARNING_RATES = [3e-5]
-# MODES = ["ntp", "kd", "kd_mse", "kd_mse_more"]  # All 4 modes for v6
-MODES = ["kd_mse_more"]  # All 4 modes for v6
+MODES = ["ntp", "kd", "kd_mse", "kd_mse_more"]  # All 4 modes for v6
+# MODES = ["kd_mse_more"]  # All 4 modes for v6
 
 # Logging
 WANDB_PROJECT = "deep-ignorance-sweep"
@@ -58,7 +59,7 @@ def run_experiment(gpu_id, lr, mode):
     """
     # Create run name
     lr_str = f"{lr:.0e}".replace("e-0", "e-").replace("e+0", "e")
-    run_name = f"v6_{mode}_lr{lr_str}_bs{BATCH_SIZE}"
+    run_name = f"vc1_{mode}_lr{lr_str}_bs{BATCH_SIZE}"
 
     # Build command
     cmd = [
