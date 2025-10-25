@@ -5,7 +5,7 @@ This script fine-tunes a language model using:
 - Single GPU training
 - JSONL text files as input
 - Optional teacher model for knowledge distillation (temperature=1.0)
-- Optional supervision on all hidden intermediate states
+- Optional supervision on all linear layer inputs and outputs (cosine similarity)
 - Periodic evaluation on WMDP benchmarks
 
 Installation:
@@ -201,39 +201,70 @@ def compute_kd_loss(
     return kd_loss
 
 
-def compute_hidden_supervision_loss(
-    student_hidden_states: List[torch.Tensor], teacher_hidden_states: List[torch.Tensor]
-) -> torch.Tensor:
-    """Compute MSE loss on all hidden states with normalization.
-
-    This uses a normalized approach to focus on the direction of hidden states
-    rather than their magnitude, which helps avoid numerical issues with large
-    activations and ensures we learn from all positions (including important
-    high-magnitude features).
+def register_linear_layer_hooks(model, activations_list):
+    """Register forward hooks on all linear layers to capture inputs and outputs.
 
     Args:
-        student_hidden_states: Hidden states from student (list of tensors)
-        teacher_hidden_states: Hidden states from teacher (list of tensors)
+        model: The model to register hooks on
+        activations_list: List to store activations (will be modified in-place)
 
     Returns:
-        MSE loss averaged over all layers
+        List of hook handles (for cleanup if needed)
+    """
+    hooks = []
+
+    def make_input_hook():
+        """Create a hook function that captures inputs."""
+        def hook(module, input, output):
+            # input is a tuple, take the first element
+            activations_list.append(input[0].detach())
+        return hook
+
+    def make_output_hook():
+        """Create a hook function that captures outputs."""
+        def hook(module, input, output):
+            activations_list.append(output.detach())
+        return hook
+
+    # Register hooks on all Linear layers
+    for name, module in model.named_modules():
+        if isinstance(module, nn.Linear):
+            # Register hook for inputs
+            handle_in = module.register_forward_hook(make_input_hook())
+            hooks.append(handle_in)
+            # Register hook for outputs
+            handle_out = module.register_forward_hook(make_output_hook())
+            hooks.append(handle_out)
+
+    return hooks
+
+
+def compute_linear_layer_supervision_loss(
+    student_activations: list, teacher_activations: list
+) -> torch.Tensor:
+    """Compute cosine similarity loss on all linear layer inputs and outputs.
+
+    This applies a cosine similarity penalty to every input and output of each
+    linear layer in the network, encouraging the student to match the teacher's
+    intermediate representations at a fine-grained level.
+
+    Args:
+        student_activations: List of activations from student
+        teacher_activations: List of activations from teacher
+
+    Returns:
+        Cosine similarity loss averaged over all linear layer activations
     """
     losses = []
-    # Supervise all layers
-    for student_hidden, teacher_hidden in zip(student_hidden_states, teacher_hidden_states):
-        student_flattened = student_hidden.reshape(-1, student_hidden.shape[-1])
-        teacher_flattened = teacher_hidden.reshape(-1, teacher_hidden.shape[-1])
-        # teacher_too_big_positions = teacher_flattened.square().mean(dim=1) > 1e2
-        # student_filtered = student_flattened[~teacher_too_big_positions]
-        # teacher_filtered = teacher_flattened[~teacher_too_big_positions]
 
-        # loss = F.mse_loss(student_filtered, teacher_filtered)
-        # loss = 10 * (1.0 - F.cosine_similarity(student_flattened, teacher_flattened, dim=1)).pow(3).mean()
-        loss = 30 * (1.0 - F.cosine_similarity(student_flattened, teacher_flattened, dim=1)).mean()
+    for student_act, teacher_act in zip(student_activations, teacher_activations):
+        student_flattened = student_act.reshape(-1, student_act.shape[-1])
+        teacher_flattened = teacher_act.reshape(-1, teacher_act.shape[-1])
+        loss = 10 * (1.0 - F.cosine_similarity(student_flattened, teacher_flattened, dim=1)).pow(3).mean()
         losses.append(loss)
 
     if not losses:
-        return torch.tensor(0.0, device=student_hidden_states[0].device)
+        return torch.tensor(0.0)
 
     return torch.stack(losses).mean()
 
@@ -338,12 +369,25 @@ def train(args):
         optimizer, num_warmup_steps=num_warmup_steps, num_training_steps=args.num_steps
     )
 
+    # Register hooks for linear layer supervision if needed
+    student_hooks = None
+    teacher_hooks = None
+    student_activations = []
+    teacher_activations = []
+
+    if args.hidden_supervision and teacher_model is not None:
+        print("Registering hooks for linear layer supervision...")
+        student_hooks = register_linear_layer_hooks(student_model, student_activations)
+        teacher_hooks = register_linear_layer_hooks(teacher_model, teacher_activations)
+        print(f"Registered {len(student_hooks)} hooks on student model")
+        print(f"Registered {len(teacher_hooks)} hooks on teacher model")
+
     # Training loop
     print(f"\nStarting training for {args.num_steps} steps...")
     print(f"Warmup steps: {num_warmup_steps}")
     print(f"Batch size: {args.batch_size}")
     if args.hidden_supervision:
-        print("Hidden supervision enabled on all layers")
+        print("Linear layer supervision enabled on all linear layers")
 
     student_model.train()
     global_step = 0
@@ -375,9 +419,14 @@ def train(args):
         input_ids = torch.stack(batch_input_ids).to(device)
         labels = torch.stack(batch_labels).to(device)
 
+        # Clear activation buffers before forward pass
+        if args.hidden_supervision and teacher_model is not None:
+            student_activations.clear()
+            teacher_activations.clear()
+
         # Forward pass - student
         student_outputs = student_model(
-            input_ids=input_ids, labels=labels, output_hidden_states=args.hidden_supervision, return_dict=True
+            input_ids=input_ids, labels=labels, return_dict=True
         )
 
         # Compute base loss
@@ -390,17 +439,17 @@ def train(args):
         if teacher_model is not None:
             with torch.no_grad():
                 teacher_outputs = teacher_model(
-                    input_ids=input_ids, output_hidden_states=args.hidden_supervision, return_dict=True
+                    input_ids=input_ids, return_dict=True
                 )
 
             # Logit distillation (temperature=1.0)
             kd_loss = compute_kd_loss(student_outputs.logits, teacher_outputs.logits, temperature=1.0)
 
-            # Hidden state supervision
+            # Linear layer supervision
             hidden_loss = torch.tensor(0.0, device=device)
             if args.hidden_supervision:
-                hidden_loss = compute_hidden_supervision_loss(
-                    student_outputs.hidden_states, teacher_outputs.hidden_states
+                hidden_loss = compute_linear_layer_supervision_loss(
+                    student_activations, teacher_activations
                 )
 
             # Combine losses
@@ -517,9 +566,9 @@ def main():
     parser.add_argument(
         "--kd_alpha", type=float, default=0.5, help="Weight for KD loss vs. CE loss (0=no KD, 1=only KD)"
     )
-    parser.add_argument("--hidden_supervision", action="store_true", help="Enable supervision on all hidden states")
+    parser.add_argument("--hidden_supervision", action="store_true", help="Enable supervision on all linear layer inputs/outputs using cosine similarity")
     parser.add_argument(
-        "--hidden_loss_weight", type=float, default=0.1, help="Weight for hidden state supervision loss"
+        "--hidden_loss_weight", type=float, default=0.1, help="Weight for linear layer supervision loss"
     )
 
     # Optimization arguments
