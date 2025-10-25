@@ -9,20 +9,14 @@ for large datasets.
 
 Example Commands:
 
-# Compute SVD for student model on a dataset
-CUDA_VISIBLE_DEVICES=0 python svd.py \
-    --data_path=filtered_output_test/retained_dataset.jsonl \
-    --model=EleutherAI/deep-ignorance-random-init \
-    --output_dir=./svd_results \
-    --num_samples=10000 \
-    --batch_size=4
-
 # Save results with descriptive name
-python svd.py \
-    --data_path=data.jsonl \
+CUDA_VISIBLE_DEVICES=1 python svd.py \
+    --data_path=filtered_output_test/retained_dataset.jsonl \
     --model=EleutherAI/deep-ignorance-unfiltered \
     --output_dir=./svd_results/unfiltered \
-    --num_samples=50000
+    --batch_size=4 \
+    --use_bf16 \
+    --num_samples=5000
 """
 
 import argparse
@@ -30,7 +24,7 @@ import json
 import os
 from pathlib import Path
 from typing import Dict, List
-from collections import defaultdict
+from collections import defaultdict, deque
 
 import torch
 import torch.nn as nn
@@ -49,17 +43,14 @@ class SVDHook:
         self.n_samples = 0
 
     def __call__(self, module, input, output):
-        """Hook function called on forward pass."""
-        # Get input tensor (input is a tuple, we want the first element)
         x = input[0].detach()
 
-        # Flatten batch and sequence dimensions: [batch, seq, hidden] -> [batch*seq, hidden]
-        if x.dim() == 3:
+        if x.dim() >= 3:
             x = x.reshape(-1, x.shape[-1])
         elif x.dim() == 2:
             pass  # Already correct shape
         else:
-            return  # Skip unexpected shapes
+            raise ValueError(f"Unexpected input dimension {x.dim()} for layer {self.layer_name}")
 
         d = x.shape[-1]
 
@@ -120,39 +111,113 @@ def register_hooks(model: nn.Module, device: torch.device) -> Dict[str, SVDHook]
     return hooks
 
 
-def load_data(data_path: str, tokenizer, seq_length: int = 2048, text_field: str = "text"):
-    """Load JSONL dataset.
+class JSONLDataset:
+    """Iterable dataset for loading JSONL text files with lazy tokenization.
 
-    Args:
-        data_path: Path to JSONL file
-        tokenizer: Tokenizer to use
-        seq_length: Maximum sequence length
-        text_field: Field name in JSONL containing text
-
-    Returns:
-        Dataset iterator
+    Follows GPT-NeoX conventions:
+    - Each document is tokenized on-the-fly in batches
+    - Documents get BOS/EOS tokens
+    - Uses a deque buffer to tokenize 100 documents at a time
+    - Yields sequences until exhausted, then raises StopIteration
     """
-    print(f"Loading dataset from {data_path}")
-    dataset = load_dataset("json", data_files=data_path, split="train")
-    print(f"Loaded {len(dataset)} documents")
 
-    def tokenize_function(examples):
-        return tokenizer(
-            examples[text_field],
-            truncation=True,
-            max_length=seq_length,
-            padding="max_length",
-            return_tensors="pt"
+    def __init__(
+        self, jsonl_path: str, tokenizer, seq_length: int = 2048, text_field: str = "text", batch_size: int = 100
+    ):
+        """Initialize dataset.
+
+        Args:
+            jsonl_path: Path to the JSONL file
+            tokenizer: Tokenizer to use
+            seq_length: Sequence length for training
+            text_field: Name of the text field in JSONL
+            batch_size: Number of documents to tokenize at once
+        """
+        self.seq_length = seq_length
+        self.tokenizer = tokenizer
+        self.text_field = text_field
+        self.batch_size = batch_size
+
+        # Get special token IDs
+        self.bos_token_id = tokenizer.bos_token_id if tokenizer.bos_token_id is not None else tokenizer.eos_token_id
+        self.eos_token_id = tokenizer.eos_token_id
+
+        print(f"Using BOS token ID: {self.bos_token_id}")
+        print(f"Using EOS token ID: {self.eos_token_id}")
+
+        # Load dataset using HuggingFace datasets (just the raw data, no tokenization)
+        print(f"Loading JSONL dataset from {jsonl_path}")
+        self.dataset = load_dataset("json", data_files=jsonl_path, split="train")
+        print(f"Loaded {len(self.dataset)} documents")
+
+        # Initialize tokenization state
+        self.token_buffer = deque()  # Buffer of tokens
+        self.doc_index = 0  # Current document index
+
+        # Pre-fill buffer
+        print(f"Pre-filling token buffer with {batch_size} documents...")
+        self._fill_buffer()
+        print(f"Token buffer initialized with {len(self.token_buffer)} tokens")
+
+    def _fill_buffer(self):
+        """Tokenize a batch of documents and add to buffer."""
+        if self.doc_index >= len(self.dataset):
+            return False
+
+        # Get batch of documents
+        end_idx = min(self.doc_index + self.batch_size, len(self.dataset))
+        batch_docs = self.dataset[self.doc_index : end_idx]
+
+        # Extract texts
+        texts = (
+            batch_docs[self.text_field]
+            if isinstance(batch_docs[self.text_field], list)
+            else [batch_docs[self.text_field]]
         )
 
-    # Tokenize dataset
-    tokenized_dataset = dataset.map(
-        tokenize_function,
-        batched=True,
-        remove_columns=dataset.column_names,
-    )
+        # Batch tokenize
+        tokenized = self.tokenizer(texts, add_special_tokens=False)
 
-    return tokenized_dataset
+        # Add BOS/EOS and extend buffer
+        for input_ids in tokenized["input_ids"]:
+            doc_tokens = [self.eos_token_id] + input_ids  # + [self.eos_token_id]
+            self.token_buffer.extend(doc_tokens)
+
+        self.doc_index = end_idx
+        return True
+
+    def __iter__(self):
+        """Return iterator."""
+        return self
+
+    def __next__(self):
+        """Get next training example.
+
+        Returns:
+            dict with 'input_ids' and 'labels'
+
+        Raises:
+            StopIteration when dataset is exhausted
+        """
+        # Fill buffer if needed
+        while len(self.token_buffer) < self.seq_length:
+            if not self._fill_buffer():
+                # No more documents to tokenize
+                if len(self.token_buffer) < self.seq_length:
+                    raise StopIteration
+                break
+
+        # Extract sequence from front of buffer
+        tokens = []
+        for _ in range(self.seq_length):
+            if len(self.token_buffer) == 0:
+                raise StopIteration
+            tokens.append(self.token_buffer.popleft())
+
+        # HuggingFace models handle shifting internally, so input_ids and labels are the same
+        tokens_tensor = torch.tensor(tokens, dtype=torch.long)
+
+        return {"input_ids": tokens_tensor, "labels": tokens_tensor}
 
 
 def compute_svd(args):
@@ -165,11 +230,14 @@ def compute_svd(args):
     print(f"Loading tokenizer from {args.model}")
     tokenizer = AutoTokenizer.from_pretrained(args.model, trust_remote_code=True)
 
+    # Set pad token if not already set
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+        print(f"Set pad_token to eos_token: {tokenizer.pad_token}")
+
     print(f"Loading model: {args.model}")
     model = AutoModelForCausalLM.from_pretrained(
-        args.model,
-        torch_dtype=torch.bfloat16 if args.use_bf16 else torch.float32,
-        trust_remote_code=True
+        args.model, torch_dtype=torch.bfloat16 if args.use_bf16 else torch.float32, trust_remote_code=True
     ).to(device)
 
     model.eval()
@@ -181,36 +249,104 @@ def compute_svd(args):
     # Register hooks
     hooks = register_hooks(model, device)
 
-    # Load dataset
-    dataset = load_data(args.data_path, tokenizer, args.seq_length, args.text_field)
+    # Load dataset (iterable)
+    dataset = JSONLDataset(args.data_path, tokenizer, seq_length=args.seq_length, text_field=args.text_field)
 
-    # Determine number of samples to process
-    num_samples = min(args.num_samples, len(dataset)) if args.num_samples > 0 else len(dataset)
-    num_batches = (num_samples + args.batch_size - 1) // args.batch_size
-
-    print(f"\nProcessing {num_samples} samples in {num_batches} batches...")
+    print(
+        f"\nProcessing up to {args.num_samples} samples..." if args.num_samples > 0 else "\nProcessing all samples..."
+    )
     print(f"Batch size: {args.batch_size}")
 
+    # Calculate expected number of batches for progress bar
+    if args.num_samples > 0:
+        expected_batches = (args.num_samples + args.batch_size - 1) // args.batch_size
+    else:
+        # Estimate based on dataset size if available
+        expected_batches = None
+
+    # Generate checkpoint batch indices using powers of 2 with half-steps
+    # [1, 2, 2, 4, 4, 8, 8, 16, 16, 32, ...] -> [1, 2, 4, 8, 16, 32, ...]
+    max_checkpoint = expected_batches if expected_batches else 100000
+    checkpoint_batches = set()
+    i = 0
+    while True:
+        checkpoint_batch = int(2 ** (i / 2))
+        if checkpoint_batch > max_checkpoint:
+            break
+        checkpoint_batches.add(checkpoint_batch)
+        i += 1
+
+    checkpoint_batches = sorted(checkpoint_batches)
+    print(f"Will save checkpoints at batches: {checkpoint_batches[:20]}{'...' if len(checkpoint_batches) > 20 else ''}")
+
     # Process data
+    progress_bar = tqdm(total=expected_batches, desc="Processing batches")
+
     with torch.no_grad():
         sample_idx = 0
-        for batch_idx in tqdm(range(num_batches), desc="Processing batches"):
-            # Get batch
-            batch_start = batch_idx * args.batch_size
-            batch_end = min(batch_start + args.batch_size, num_samples)
-            batch = dataset[batch_start:batch_end]
+        batch_idx = 0
 
-            # Move to device
-            input_ids = torch.tensor(batch["input_ids"]).to(device)
-            attention_mask = torch.tensor(batch["attention_mask"]).to(device)
+        while True:
+            # Collect batch
+            batch_input_ids = []
+
+            for _ in range(args.batch_size):
+                try:
+                    example = next(dataset)
+                    batch_input_ids.append(example["input_ids"])
+                    sample_idx += 1
+
+                    # Check if we've hit the sample limit
+                    if args.num_samples > 0 and sample_idx >= args.num_samples:
+                        break
+                except StopIteration:
+                    break
+
+            # If no examples collected, we're done
+            if len(batch_input_ids) == 0:
+                break
+
+            # Stack into batch and move to device
+            input_ids = torch.stack(batch_input_ids).to(device)
 
             # Forward pass (hooks will accumulate covariance)
-            _ = model(input_ids=input_ids, attention_mask=attention_mask)
+            _ = model(input_ids=input_ids)
 
-            sample_idx = batch_end
+            batch_idx += 1
+            progress_bar.update(1)
+            progress_bar.set_postfix({"samples": sample_idx, "batch": batch_idx})
 
-            if sample_idx >= num_samples:
+            # Save checkpoint at specific batch indices (powers of 2 with half-steps)
+            if batch_idx in checkpoint_batches:
+                progress_bar.write(f"Saving checkpoint at batch {batch_idx}...")
+                checkpoint_file = os.path.join(args.output_dir, f"checkpoint_batch_{batch_idx}.json")
+                os.makedirs(args.output_dir, exist_ok=True)
+
+                # Compute singular values for checkpoint
+                checkpoint_results = {}
+                for name, hook in tqdm(hooks.items(), desc="Computing SVD"):
+                    sv = hook.compute_singular_values()
+                    checkpoint_results[name] = {
+                        "singular_values": sv.cpu().numpy().tolist(),
+                        "n_samples": hook.n_samples,
+                        "hidden_dim": hook.cov.shape[0] if hook.cov is not None else 0,
+                    }
+
+                checkpoint = {
+                    "batch_idx": batch_idx,
+                    "samples_processed": sample_idx,
+                    "results": checkpoint_results,
+                }
+
+                with open(checkpoint_file, "w") as f:
+                    json.dump(checkpoint, f, indent=2)
+                progress_bar.write(f"Checkpoint saved to {checkpoint_file}")
+
+            # Check if we've hit the sample limit
+            if args.num_samples > 0 and sample_idx >= args.num_samples:
                 break
+
+    progress_bar.close()
 
     print("\nComputing singular values...")
 
@@ -238,7 +374,7 @@ def compute_svd(args):
     metadata = {
         "model": args.model,
         "data_path": args.data_path,
-        "num_samples": num_samples,
+        "num_samples": sample_idx,
         "seq_length": args.seq_length,
         "batch_size": args.batch_size,
         "num_layers": len(results),
@@ -250,7 +386,7 @@ def compute_svd(args):
 
     print("\nSummary:")
     print(f"  Total layers analyzed: {len(results)}")
-    print(f"  Total samples processed: {num_samples}")
+    print(f"  Total samples processed: {sample_idx}")
     print(f"  Results saved to: {output_file}")
     print(f"  Metadata saved to: {metadata_file}")
 
@@ -272,19 +408,11 @@ def main():
     parser.add_argument("--data_path", type=str, required=True, help="Path to JSONL file")
     parser.add_argument("--text_field", type=str, default="text", help="Field name for text in JSONL")
     parser.add_argument("--seq_length", type=int, default=2048, help="Maximum sequence length")
-    parser.add_argument(
-        "--num_samples",
-        type=int,
-        default=10000,
-        help="Number of samples to process (0=all)"
-    )
+    parser.add_argument("--num_samples", type=int, default=10000, help="Number of samples to process (0=all)")
 
     # Model arguments
     parser.add_argument(
-        "--model",
-        type=str,
-        required=True,
-        help="Model to analyze (e.g., EleutherAI/deep-ignorance-random-init)"
+        "--model", type=str, required=True, help="Model to analyze (e.g., EleutherAI/deep-ignorance-e2e-strong-filter)"
     )
     parser.add_argument("--use_bf16", action="store_true", help="Use bfloat16 precision")
 

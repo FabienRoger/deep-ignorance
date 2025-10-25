@@ -14,6 +14,20 @@ Installation:
 Example Commands:
 
 # Basic fine-tuning from JSONL file
+CUDA_VISIBLE_DEVICES=3 python finetune_simple.py \
+    --data_path=filtered_output_test/retained_dataset.jsonl \
+    --student_model=EleutherAI/deep-ignorance-random-init \
+    --teacher_model=EleutherAI/deep-ignorance-unfiltered \
+    --hidden_supervision \
+    --kd_alpha=1 \
+    --hidden_loss_weight=1 \
+    --output_dir=./checkpoints/finetuned \
+    --num_steps=10000 \
+    --batch_size=2 \
+    --use_bf16 \
+    --eval_every=500 \
+    --use_wandb
+    
 CUDA_VISIBLE_DEVICES=7 python finetune_simple.py \
     --data_path=filtered_output_test/retained_dataset.jsonl \
     --student_model=EleutherAI/deep-ignorance-random-init \
@@ -215,15 +229,19 @@ def register_linear_layer_hooks(model, activations_list):
 
     def make_input_hook():
         """Create a hook function that captures inputs."""
+
         def hook(module, input, output):
             # input is a tuple, take the first element
             activations_list.append(input[0].detach())
+
         return hook
 
     def make_output_hook():
         """Create a hook function that captures outputs."""
+
         def hook(module, input, output):
             activations_list.append(output.detach())
+
         return hook
 
     # Register hooks on all Linear layers
@@ -239,9 +257,7 @@ def register_linear_layer_hooks(model, activations_list):
     return hooks
 
 
-def compute_linear_layer_supervision_loss(
-    student_activations: list, teacher_activations: list
-) -> torch.Tensor:
+def compute_linear_layer_supervision_loss(student_activations: list, teacher_activations: list) -> torch.Tensor:
     """Compute cosine similarity loss on all linear layer inputs and outputs.
 
     This applies a cosine similarity penalty to every input and output of each
@@ -263,9 +279,7 @@ def compute_linear_layer_supervision_loss(
         loss = 10 * (1.0 - F.cosine_similarity(student_flattened, teacher_flattened, dim=1)).pow(3).mean()
         losses.append(loss)
 
-    if not losses:
-        return torch.tensor(0.0)
-
+    assert losses
     return torch.stack(losses).mean()
 
 
@@ -425,9 +439,7 @@ def train(args):
             teacher_activations.clear()
 
         # Forward pass - student
-        student_outputs = student_model(
-            input_ids=input_ids, labels=labels, return_dict=True
-        )
+        student_outputs = student_model(input_ids=input_ids, labels=labels, return_dict=True)
 
         # Compute base loss
         ntp_loss = student_outputs.loss
@@ -438,9 +450,7 @@ def train(args):
         hidden_loss = None
         if teacher_model is not None:
             with torch.no_grad():
-                teacher_outputs = teacher_model(
-                    input_ids=input_ids, return_dict=True
-                )
+                teacher_outputs = teacher_model(input_ids=input_ids, return_dict=True)
 
             # Logit distillation (temperature=1.0)
             kd_loss = compute_kd_loss(student_outputs.logits, teacher_outputs.logits, temperature=1.0)
@@ -448,9 +458,7 @@ def train(args):
             # Linear layer supervision
             hidden_loss = torch.tensor(0.0, device=device)
             if args.hidden_supervision:
-                hidden_loss = compute_linear_layer_supervision_loss(
-                    student_activations, teacher_activations
-                )
+                hidden_loss = compute_linear_layer_supervision_loss(student_activations, teacher_activations)
 
             # Combine losses
             loss = (1 - args.kd_alpha) * ntp_loss + args.kd_alpha * kd_loss + args.hidden_loss_weight * hidden_loss
@@ -566,7 +574,11 @@ def main():
     parser.add_argument(
         "--kd_alpha", type=float, default=0.5, help="Weight for KD loss vs. CE loss (0=no KD, 1=only KD)"
     )
-    parser.add_argument("--hidden_supervision", action="store_true", help="Enable supervision on all linear layer inputs/outputs using cosine similarity")
+    parser.add_argument(
+        "--hidden_supervision",
+        action="store_true",
+        help="Enable supervision on all linear layer inputs/outputs using cosine similarity",
+    )
     parser.add_argument(
         "--hidden_loss_weight", type=float, default=0.1, help="Weight for linear layer supervision loss"
     )
