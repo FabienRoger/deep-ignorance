@@ -13,3 +13,4 @@ __pycache__
 filtered_output/
 filtered_output_test/
 checkpoints/
+svd_results/

@@ -25,6 +25,7 @@ import os
 from pathlib import Path
 from typing import Dict, List
 from collections import defaultdict, deque
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import torch
 import torch.nn as nn
@@ -69,14 +70,17 @@ class SVDHook:
         if self.cov is None or self.n_samples == 0:
             return torch.tensor([])
 
-        # Compute eigenvalues of A^T A
-        eigenvalues = torch.linalg.eigvalsh(self.cov)
+        # Move to CPU and clone to avoid lazy wrapper issues with repeated calls
+        cov_cpu = self.cov.cpu().clone()
+
+        # Compute eigenvalues of A^T A (returns ascending order)
+        eigenvalues = torch.linalg.eigvalsh(cov_cpu)
 
         # Singular values are sqrt of eigenvalues (clamp to handle numerical errors)
         singular_values = torch.sqrt(torch.clamp(eigenvalues, min=0))
 
-        # Sort in descending order
-        singular_values = torch.sort(singular_values, descending=True).values
+        # Flip to get descending order (faster than sorting)
+        singular_values = torch.flip(singular_values, dims=[0])
 
         return singular_values
 
@@ -322,15 +326,25 @@ def compute_svd(args):
                 checkpoint_file = os.path.join(args.output_dir, f"checkpoint_batch_{batch_idx}.json")
                 os.makedirs(args.output_dir, exist_ok=True)
 
-                # Compute singular values for checkpoint
-                checkpoint_results = {}
-                for name, hook in tqdm(hooks.items(), desc="Computing SVD"):
+                # Compute singular values for checkpoint in parallel using threads
+                def compute_layer_svd(name_hook_pair):
+                    name, hook = name_hook_pair
                     sv = hook.compute_singular_values()
-                    checkpoint_results[name] = {
+                    return name, {
                         "singular_values": sv.cpu().numpy().tolist(),
                         "n_samples": hook.n_samples,
                         "hidden_dim": hook.cov.shape[0] if hook.cov is not None else 0,
                     }
+
+                checkpoint_results = {}
+                with ThreadPoolExecutor(max_workers=32) as executor:
+                    futures = {executor.submit(compute_layer_svd, item): item[0] for item in hooks.items()}
+                    svd_pbar = tqdm(total=len(futures), desc="Computing SVD", leave=False)
+                    for future in as_completed(futures):
+                        name, result = future.result()
+                        checkpoint_results[name] = result
+                        svd_pbar.update(1)
+                    svd_pbar.close()
 
                 checkpoint = {
                     "batch_idx": batch_idx,
@@ -348,19 +362,28 @@ def compute_svd(args):
 
     progress_bar.close()
 
-    print("\nComputing singular values...")
+    print("\nComputing final singular values...")
 
-    # Compute singular values for each layer
-    results = {}
-    for layer_name, hook in tqdm(hooks.items(), desc="Computing SVD"):
+    # Compute singular values for each layer in parallel
+    def compute_final_svd(name_hook_pair):
+        layer_name, hook = name_hook_pair
         singular_values = hook.compute_singular_values()
         stats = hook.get_stats()
-
-        results[layer_name] = {
+        return layer_name, {
             "singular_values": singular_values.cpu().numpy().tolist(),
             "n_samples": stats["n_samples"],
             "hidden_dim": stats["hidden_dim"],
         }
+
+    results = {}
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        futures = {executor.submit(compute_final_svd, item): item[0] for item in hooks.items()}
+        svd_pbar = tqdm(total=len(futures), desc="Computing SVD")
+        for future in as_completed(futures):
+            layer_name, result = future.result()
+            results[layer_name] = result
+            svd_pbar.update(1)
+        svd_pbar.close()
 
     # Save results
     os.makedirs(args.output_dir, exist_ok=True)
